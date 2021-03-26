@@ -1,0 +1,123 @@
+---
+title: '**TFM**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "11/02/2021"
+output:
+  pdf_document:
+    toc: T
+    fig_caption: yes
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = F, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# pacman::p_load(dplyr, ggplot2, purrr, tidyr, readr, tibble)
+pacman::p_load(tidyverse)
+```
+
+```{r}
+# df <- read.table("BBDD_DEFINITIVA_V4.txt", header = T)
+# saveRDS(df, "BBDD_DEFINITIVA_V4.RDS")
+
+df <- readRDS("BBDD_DEFINITIVA_V4.RDS")
+summary(df)
+```
+
+```{r}
+df$SEXO = as.factor(ifelse(df$SEXO == 0, "hombre", "mujer"))
+df$FUMADOR = as.factor(ifelse(df$FUMADOR == 0, "noFumador", "Fumador"))
+df$BUENA_SALUD = as.factor(df$BUENA_SALUD)
+
+# df$EDAD_ACTUARIAL Edad actuarial en cada año
+# df$EDAD_SUS Edad actuarial en el momento de la suscripción
+# df$EXP Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+
+df$SINIESTRO = as.factor(df$SINIESTRO)
+
+# df$DURACION
+# df$DURACION_CAT por intervalos
+
+# df$CAPITAL Capital asegurado
+df$IMC = as.numeric(gsub(",", ".", gsub("\\.", "", df$IMC)))
+
+# df$CAPITAL_CAT1 intervalos
+
+unique(df$CAPITAL_CAT1_DESC)
+unique(df$CAPITAL_CAT2_DESC)
+unique(df$CAPITAL_CAT3_DESC)
+
+unique(df$IMC_CAT1_DESC)
+unique(df$IMC_CAT2_DESC)
+
+table(df$COVER)
+```
+
+```{r}
+pos_sin = which(df$SINIESTRO == "1")
+clave_sin = df[pos_sin, "CLAVE"] # tomamos todas las claves de las personas con siniestro
+clave_sin = which(df$CLAVE %in% clave_sin)
+df_sin = df[clave_sin, ] # hay personas que tienen dos registros en un mismo año
+
+
+df_Caidas = df[-clave_sin, ] # sin los siniestros
+# ahora hay que asignar una variable que indique caída = 1, else 0.
+```
+
+```{r}
+# SINIESTROS
+clave_sin <- df %>%
+  filter(SINIESTRO == 1) %>%
+  select(CLAVE)
+
+df_sin <- df %>%
+  filter(CLAVE %in% clave_sin$CLAVE)
+
+# CAIDAS
+
+# Here we take the keys of the caidas
+claves_caidas <- df %>%
+  filter((CLAVE %in% clave_sin$CLAVE) == F) %>%
+  group_by(CLAVE) %>%
+  count() %>%
+  mutate(CAIDA = ifelse(n == 1 | n == 2, "si", "no")) %>%
+  filter(CAIDA == "si") %>%
+  select(CLAVE)
+
+df_Caidas <- df %>%
+  filter((CLAVE %in% clave_sin$CLAVE) == F) %>%
+  mutate(CAIDA = ifelse(CLAVE %in% claves_caidas$CLAVE, "si", "no")) %>%
+  arrange(CLAVE) 
+
+for (i in 2:nrow(df_Caidas)){
+  if (df_Caidas$CAIDA[i-1] == "si"){
+    if (df_Caidas$CLAVE[i-1] == df_Caidas$CLAVE[i]){
+      df_Caidas$CAIDA[i-1] = "no"
+    }
+  }
+}
+
+# saveRDS(df_Caidas, file = "df_Caidas.RDS")
+```
+
+```{r}
+df_Caidas <- readRDS("df_Caidas.RDS")
+```
+
+
+
+
