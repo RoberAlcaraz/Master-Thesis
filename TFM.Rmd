@@ -26,7 +26,6 @@ knitr::opts_chunk$set(warning = FALSE,
 ```
 
 ```{r, echo = F}
-# pacman::p_load(dplyr, ggplot2, purrr, tidyr, readr, tibble)
 pacman::p_load(tidyverse)
 ```
 
@@ -68,25 +67,21 @@ table(df$COVER)
 ```
 
 ```{r}
-pos_sin = which(df$SINIESTRO == "1")
-clave_sin = df[pos_sin, "CLAVE"] # tomamos todas las claves de las personas con siniestro
-clave_sin = which(df$CLAVE %in% clave_sin)
-df_sin = df[clave_sin, ] # hay personas que tienen dos registros en un mismo año
-
-
-df_Caidas = df[-clave_sin, ] # sin los siniestros
-# ahora hay que asignar una variable que indique caída = 1, else 0.
-```
-
-```{r}
 # SINIESTROS
-clave_sin <- df %>%
+clave_sin <- df %>% # tomamos todas las claves de las personas con siniestro
   filter(SINIESTRO == 1) %>%
   select(CLAVE)
 
-df_sin <- df %>%
+df_sin <- df %>% # hay personas que tienen dos registros en un mismo año
   filter(CLAVE %in% clave_sin$CLAVE)
 
+df_sin %>%
+  select(CLAVE, PERIODO, COVER) %>%
+  distinct()
+```
+
+
+```{r}
 # CAIDAS
 
 # Here we take the keys of the caidas
@@ -115,7 +110,10 @@ for (i in 2:nrow(df_Caidas)){
 ```
 
 ```{r}
-df_Caidas <- readRDS("df_Caidas.RDS")
+df_caidas <- readRDS("df_Caidas.RDS")
+table(df$SINIESTRO)
+table(df_sin$SINIESTRO)
+table(df_caidas$CAIDA)
 ```
 
 
