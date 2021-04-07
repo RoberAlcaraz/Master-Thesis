@@ -67,6 +67,26 @@ table(df$COVER)
 ```
 
 ```{r}
+df <- tibble::rowid_to_column(df, "ID")
+
+# here we take the IDs that are not repeated
+IDs <- df %>%
+  arrange(desc(SINIESTRO)) %>%
+  distinct_at(vars(CLAVE, PERIODO, COVER), .keep_all = T) %>%
+  select(ID)
+
+# here we ensure that the rows we are removing have SINIESTRO = 0
+df %>%
+  filter(!(ID %in% IDs$ID)) %>%
+  select(SINIESTRO) %>%
+  summary()
+
+df <- df %>%
+  filter(ID %in% IDs$ID)
+```
+
+
+```{r}
 # SINIESTROS
 clave_sin <- df %>% # tomamos todas las claves de las personas con siniestro
   filter(SINIESTRO == 1) %>%
@@ -75,6 +95,7 @@ clave_sin <- df %>% # tomamos todas las claves de las personas con siniestro
 df_sin <- df %>% # hay personas que tienen dos registros en un mismo año
   filter(CLAVE %in% clave_sin$CLAVE)
 
+# Now, we do not have doubled rows
 df_sin %>%
   select(CLAVE, PERIODO, COVER) %>%
   distinct()
