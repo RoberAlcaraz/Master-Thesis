@@ -26,7 +26,11 @@ knitr::opts_chunk$set(warning = FALSE,
 ```
 
 ```{r, echo = F}
-pacman::p_load(tidyverse)
+# install.packages("pacman")
+pacman::p_load(tidyverse, tidymodels, workflows, tune)
+
+# Models packages
+pacman::p_load(ranger)
 ```
 
 ```{r}
@@ -34,38 +38,66 @@ pacman::p_load(tidyverse)
 # saveRDS(df, "BBDD_DEFINITIVA_V4.RDS")
 
 df <- readRDS("BBDD_DEFINITIVA_V4.RDS")
-summary(df)
 ```
+
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
+
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
+
+- CAPITAL: Capital asegurado. Dinero que recibirá el beneficiario en caso de siniestro
+
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC:  
 
 ```{r}
-df$SEXO = as.factor(ifelse(df$SEXO == 0, "hombre", "mujer"))
-df$FUMADOR = as.factor(ifelse(df$FUMADOR == 0, "noFumador", "Fumador"))
-df$BUENA_SALUD = as.factor(df$BUENA_SALUD)
+df$PERIODO           <- factor(df$PERIODO)
+df$COVER             <- factor(df$COVER)
+df$SEXO              <- factor(ifelse(df$SEXO == 0, "hombre", "mujer"))
+df$FUMADOR           <- factor(ifelse(df$FUMADOR == 0, "noFumador", "Fumador"))
+df$BUENA_SALUD       <- factor(ifelse(df$BUENA_SALUD == 1, "si", "no"))
+df$EXP               <- as.numeric(gsub(",", ".", gsub("\\.", "", df$EXP)))
+df$SINIESTRO         <- factor(ifelse(df$SINIESTRO == 1, "si", "no"))
+df$DURACION          <- as.numeric(gsub(",", ".", gsub("\\.", "", df$DURACION)))
 
-# df$EDAD_ACTUARIAL Edad actuarial en cada año
-# df$EDAD_SUS Edad actuarial en el momento de la suscripción
-# df$EXP Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+df$CAPITAL_CAT1_DESC <- factor(df$CAPITAL_CAT1_DESC, 
+                               levels = c("0-30.000", "30.001-60.000", "60.001-90.000",
+                                          "90.001-120.000", "120.001-150.000", "+150.000"),
+                               ordered = T)
+df$CAPITAL_CAT2_DESC <- factor(df$CAPITAL_CAT2_DESC, 
+                               levels = c("0-60.000", "60.001-120.000", "+120.000"),
+                               ordered = T)
 
-df$SINIESTRO = as.factor(df$SINIESTRO)
+df$CAPITAL_CAT3_DESC <- factor(df$CAPITAL_CAT3_DESC, 
+                               levels = c("0-100.000", "100.001-200.000", "+200.000"),
+                               ordered = T)
 
-# df$DURACION
-# df$DURACION_CAT por intervalos
-
-# df$CAPITAL Capital asegurado
-df$IMC = as.numeric(gsub(",", ".", gsub("\\.", "", df$IMC)))
-
-# df$CAPITAL_CAT1 intervalos
-
-unique(df$CAPITAL_CAT1_DESC)
-unique(df$CAPITAL_CAT2_DESC)
-unique(df$CAPITAL_CAT3_DESC)
-
-unique(df$IMC_CAT1_DESC)
-unique(df$IMC_CAT2_DESC)
-
-table(df$COVER)
+df$IMC               <- as.numeric(gsub(",", ".", gsub("\\.", "", df$IMC)))
+df$IMC_CAT1_DESC     <- factor(df$IMC_CAT1_DESC)
+df$IMC_CAT2_DESC     <- factor(df$IMC_CAT2_DESC)
 ```
 
+Here, we remove the repeated columns
 ```{r}
 df <- tibble::rowid_to_column(df, "ID")
 
@@ -85,26 +117,20 @@ df <- df %>%
   filter(ID %in% IDs$ID)
 ```
 
-
+Also, we create another df of only the people that had some sinister
 ```{r}
 # SINIESTROS
 clave_sin <- df %>% # tomamos todas las claves de las personas con siniestro
-  filter(SINIESTRO == 1) %>%
+  filter(SINIESTRO == "si") %>%
   select(CLAVE)
 
-df_sin <- df %>% # hay personas que tienen dos registros en un mismo año
+df_sin <- df %>%
   filter(CLAVE %in% clave_sin$CLAVE)
-
-# Now, we do not have doubled rows
-df_sin %>%
-  select(CLAVE, PERIODO, COVER) %>%
-  distinct()
 ```
 
-
+And another one with the people that drop
 ```{r}
 # CAIDAS
-
 # Here we take the keys of the caidas
 claves_caidas <- df %>%
   filter((CLAVE %in% clave_sin$CLAVE) == F) %>%
@@ -114,29 +140,227 @@ claves_caidas <- df %>%
   filter(CAIDA == "si") %>%
   select(CLAVE)
 
-df_Caidas <- df %>%
+df_caidas <- df %>%
   filter((CLAVE %in% clave_sin$CLAVE) == F) %>%
   mutate(CAIDA = ifelse(CLAVE %in% claves_caidas$CLAVE, "si", "no")) %>%
   arrange(CLAVE) 
 
-for (i in 2:nrow(df_Caidas)){
-  if (df_Caidas$CAIDA[i-1] == "si"){
-    if (df_Caidas$CLAVE[i-1] == df_Caidas$CLAVE[i]){
-      df_Caidas$CAIDA[i-1] = "no"
+for (i in 2:nrow(df_caidas)){
+  if (df_caidas$CAIDA[i-1] == "si") {
+    if (df_caidas$CLAVE[i-1] == df_caidas$CLAVE[i]) {
+      df_caidas$CAIDA[i-1] = "no"
     }
   }
 }
 
-# saveRDS(df_Caidas, file = "df_Caidas.RDS")
+# saveRDS(df_caidas, file = "df_caidas.RDS")
 ```
 
 ```{r}
-df_caidas <- readRDS("df_Caidas.RDS")
-table(df$SINIESTRO)
-table(df_sin$SINIESTRO)
-table(df_caidas$CAIDA)
+df_caidas <- readRDS("df_caidas.RDS")
 ```
 
+# Description of the variables
+
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
+
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
+
+- CAPITAL:
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC:  
+
+```{r}
+# COVER
+table(df$COVER)/nrow(df)
+df %>%
+  ggplot(aes(x = COVER)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# SEXO
+table(df$SEXO)/nrow(df)
+df %>%
+  ggplot(aes(x = SEXO)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# FUMADOR
+table(df$FUMADOR)/nrow(df)
+df %>%
+  ggplot(aes(x = FUMADOR)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# BUENA_SALUD  
+table(df$BUENA_SALUD)/nrow(df)
+df %>%
+  ggplot(aes(x = BUENA_SALUD)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# EDAD_ACTUARIAL
+df %>%
+  ggplot(aes(x = EDAD_ACTUARIAL)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = EDAD_ACTUARIAL)) +
+  geom_density() + theme_bw()
+
+# EDAD_SUS
+df %>%
+  ggplot(aes(x = EDAD_SUS)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = EDAD_SUS)) +
+  geom_density() + theme_bw()
+```
+
+```{r}
+# EXP
+table(ifelse(df$EXP == 1, "=1", "<1"))/nrow(df)
+df %>%
+  ggplot(aes(x = EXP)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = EXP)) +
+  geom_density() + theme_bw()
+```
+
+
+```{r}
+# SINIESTRO
+table(df$SINIESTRO)/nrow(df)
+df %>%
+  ggplot(aes(x = SINIESTRO)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# DURACION
+df %>%
+  ggplot(aes(x = DURACION)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = DURACION)) +
+  geom_density() + theme_bw()
+
+# DURACION_CAT
+df %>%
+  ggplot(aes(x = DURACION_CAT)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = DURACION_CAT)) +
+  geom_density() + theme_bw()
+```
+
+```{r}
+# CAPITAL
+summary(df$CAPITAL)
+df %>%
+  ggplot(aes(x = CAPITAL)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = CAPITAL)) +
+  geom_density() + theme_bw()
+
+# CAPITAL_DESC
+table(df$CAPITAL_CAT1_DESC)/nrow(df)
+df %>%
+  ggplot(aes(x = CAPITAL_CAT1_DESC)) +
+  geom_bar() + theme_bw()
+
+table(df$CAPITAL_CAT2_DESC)/nrow(df)
+df %>%
+  ggplot(aes(x = CAPITAL_CAT2_DESC)) +
+  geom_bar() + theme_bw()
+
+table(df$CAPITAL_CAT3_DESC)/nrow(df)
+df %>%
+  ggplot(aes(x = CAPITAL_CAT3_DESC)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# IMC
+summary(df$IMC)
+
+# Persona de 1.80 y 180kg: 55.6 de IMC
+df %>%
+  filter(IMC > 55)
+
+df %>%
+  ggplot(aes(x = IMC)) +
+  geom_histogram() + theme_bw()
+df %>%
+  ggplot(aes(x = IMC)) +
+  geom_density() + theme_bw()
+
+# IMC_DESC
+table(df$IMC_CAT1_DESC)/nrow(df)
+df %>%
+  ggplot(aes(x = IMC_CAT1_DESC)) +
+  geom_bar() + theme_bw()
+
+table(df$IMC_CAT2_DESC)/nrow(df)
+df %>%
+  ggplot(aes(x = IMC_CAT2_DESC)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# CAIDAS
+table(df_caidas$CAIDA)/nrow(df_caidas)
+df_caidas %>%
+  ggplot(aes(x = CAIDA)) +
+  geom_bar() + theme_bw()
+```
+
+
+
+# Modelos
+
+```{r}
+set.seed(123)
+df_split <- initial_split(data = df, prop = 3/4, strata = SINIESTRO)
+df_training <- training(df_split)
+df_testing <- testing(df_split)
+
+
+my_formula_1 <- as.formula(SINIESTRO ~ PERIDO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+my_formula_2 <- as.formula(SINIESTRO ~ PERIDO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_SUS + EXP + DURACION + CAPITAL + IMC)
+
+fit <- glm(formula = my_formula, data = df_training, family = binomial)
+summary(fit)
+
+pred <- predict(fit, newdata = df_testing, type = "response")
+summary(pred)
+```
 
 
 
