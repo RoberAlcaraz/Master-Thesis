@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune)
+pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker)
 
 # Models packages
 pacman::p_load(ranger)
@@ -345,15 +345,62 @@ df_caidas %>%
 
 # Modelos
 
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
+
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
+
+- CAPITAL:
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC: 
+
+## Explicative model
+
+```{r}
+glm_model <- logistic_reg() %>% 
+  set_engine("glm") %>% 
+  set_mode("classification")
+
+glm_fit <- glm_model %>%
+  fit(my_formula_1, data = df)
+
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+
 ```{r}
 set.seed(123)
 df_split <- initial_split(data = df, prop = 3/4, strata = SINIESTRO)
-df_training <- training(df_split)
-df_testing <- testing(df_split)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+```
 
-
-my_formula_1 <- as.formula(SINIESTRO ~ PERIDO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
-my_formula_2 <- as.formula(SINIESTRO ~ PERIDO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_SUS + EXP + DURACION + CAPITAL + IMC)
+```{r}
+my_formula_1 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+my_formula_2 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_SUS + EXP + DURACION + CAPITAL + IMC)
 
 fit <- glm(formula = my_formula, data = df_training, family = binomial)
 summary(fit)
@@ -361,6 +408,58 @@ summary(fit)
 pred <- predict(fit, newdata = df_testing, type = "response")
 summary(pred)
 ```
+
+```{r}
+set.seed(123)
+
+df_1 <- df[, c("PERIODO", "COVER", "SEXO", "FUMADOR", "BUENA_SALUD", "EDAD_ACTUARIAL", "SINIESTRO", "EXP", "DURACION", "CAPITAL", "IMC")]
+
+df_split_1 <- initial_split(data = df_1, prop = 3/4, strata = SINIESTRO)
+df_train_1 <- training(df_split_1)
+df_test_1  <- testing(df_split_1)
+# cv
+df_train_1_cv <- vfold_cv(df_train_1)
+
+sin_recipe <- 
+  recipe(SINIESTRO ~ ., data = df_1) %>%
+  step_normalize(all_numeric()) %>%
+  step_BoxCox(SINIESTRO)
+
+df_train_preprocessed <- sin_recipe %>%
+  prep(df_train_1) 
+```
+
+```{r}
+rf_model <- 
+  rand_forest() %>%
+  set_args(mtry = tune()) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification") 
+
+rf_workflow <- workflow() %>%
+  add_recipe(sin_recipe) %>%
+  add_model(rf_model)
+
+rf_grid <- expand.grid(mtry = c(3, 4, 5))
+# extract results
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = df_train_1_cv, #CV object
+            grid = rf_grid, # grid of values to try
+            metrics = metric_set(accuracy, roc_auc) # metrics we care about
+            )
+
+# print results
+rf_tune_results %>%
+  collect_metrics()
+```
+
+
+
+
+
+
+
+
 
 
 
