@@ -374,7 +374,17 @@ df_caidas %>%
 - IMC_CAT1_DESC:    
 - IMC_CAT2_DESC: 
 
-## Explicative model
+## Explanatory model
+
+```{r}
+my_formula_1 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+my_formula_2 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT1_DESC)
+my_formula_3 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT2_DESC)
+my_formula_4 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT1_DESC)
+my_formula_5 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT2_DESC)
+my_formula_6 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT3_DESC)
+```
+
 
 ```{r}
 glm_model <- logistic_reg() %>% 
@@ -382,12 +392,20 @@ glm_model <- logistic_reg() %>%
   set_mode("classification")
 
 glm_fit <- glm_model %>%
-  fit(my_formula_1, data = df)
+  fit(my_formula_1, data = df_train)
 
 tidy(glm_fit) %>% 
   dwplot(dot_args = list(size = 2, color = "black"),
          whisker_args = list(color = "black"),
          vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+
+test_predictions <- predict(glm_fit, new_data = df_test)
+test_predictions <- test_predictions %>%
+  mutate(SINIESTRO = df_test$SINIESTRO)
+
+test_predictions %>% 
+  conf_mat(truth = SINIESTRO, estimate = .pred_class) %>%
+  summary()
 ```
 
 
@@ -399,9 +417,6 @@ df_test <- testing(df_split)
 ```
 
 ```{r}
-my_formula_1 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
-my_formula_2 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_SUS + EXP + DURACION + CAPITAL + IMC)
-
 fit <- glm(formula = my_formula, data = df_training, family = binomial)
 summary(fit)
 
