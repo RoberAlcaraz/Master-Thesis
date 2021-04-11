@@ -1,0 +1,48 @@
+---
+title: '**TFM: Analyzing**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "11/04/2021"
+output:
+  pdf_document:
+    toc: T
+    fig_caption: yes
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = F, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker)
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+
+```{r}
+df_caidas <- readRDS("df_caidas.RDS")
+```
+
+
+
+
+
+
+
+
+
