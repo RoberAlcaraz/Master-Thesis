@@ -377,6 +377,13 @@ df_caidas %>%
 ## Explanatory model
 
 ```{r}
+set.seed(123)
+df_split <- initial_split(data = df, prop = 3/4, strata = SINIESTRO)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+```
+
+```{r}
 my_formula_1 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
 my_formula_2 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT1_DESC)
 my_formula_3 <- as.formula(SINIESTRO ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT2_DESC)
@@ -408,13 +415,6 @@ test_predictions %>%
   summary()
 ```
 
-
-```{r}
-set.seed(123)
-df_split <- initial_split(data = df, prop = 3/4, strata = SINIESTRO)
-df_train <- training(df_split)
-df_test <- testing(df_split)
-```
 
 ```{r}
 fit <- glm(formula = my_formula, data = df_training, family = binomial)
