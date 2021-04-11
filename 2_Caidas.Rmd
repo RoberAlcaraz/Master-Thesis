@@ -27,19 +27,120 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker)
+pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker, themis)
 
 # Models packages
-pacman::p_load(ranger)
+pacman::p_load(ranger, discrim)
 ```
 
 
 ```{r}
 df_caidas <- readRDS("df_caidas.RDS")
+df_caidas$ID <- NULL
+df_caidas$SINIESTRO <- NULL
 ```
 
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
 
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
 
+- CAPITAL:
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC:
+
+```{r}
+table(df_caidas$CAIDA)/nrow(df_caidas)
+```
+
+## Subsampling the data (example)
+
+```{r}
+# my_formula_1 <- as.formula(CAIDA ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+my_formula_1 <- as.formula(CAIDA ~ EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+
+# Recipe
+imbal_rec_1 <- 
+  recipe(my_formula_1, data = df_caidas) %>%
+  step_rose(CAIDA) 
+
+imbal_rec_2 <- 
+  recipe(my_formula_1, data = df_caidas) %>%
+  step_upsample(CAIDA)
+
+imbal_rec_3 <- 
+  recipe(my_formula_1, data = df_caidas) %>%
+  step_downsample(CAIDA)
+
+# Model
+qda_mod <- 
+  discrim_regularized(frac_common_cov = 0, frac_identity = 0) %>% 
+  set_engine("klaR")
+
+# Workflow
+qda_rose_wflw_1 <- 
+  workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(imbal_rec_1)
+qda_rose_wflw_2 <- 
+  workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(imbal_rec_2)
+qda_rose_wflw_3 <- 
+  workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(imbal_rec_3)
+
+# Model performance
+set.seed(5732)
+cv_folds <- vfold_cv(df_caidas, 
+                     strata = "CAIDA", v = 5)
+
+# Metrics
+cls_metrics <- metric_set(roc_auc, j_index)
+
+# Finally, we train the models using `tune::fit_resamples()`
+set.seed(2180)
+qda_rose_res_1 <- fit_resamples(
+  qda_rose_wflw_1, 
+  resamples = cv_folds, 
+  metrics = cls_metrics
+)
+qda_rose_res_2 <- fit_resamples(
+  qda_rose_wflw_2, 
+  resamples = cv_folds, 
+  metrics = cls_metrics
+)
+qda_rose_res_3 <- fit_resamples(
+  qda_rose_wflw_3, 
+  resamples = cv_folds, 
+  metrics = cls_metrics
+)
+
+collect_metrics(qda_rose_res_1)
+collect_metrics(qda_rose_res_2)
+collect_metrics(qda_rose_res_3)
+```
 
 
 
