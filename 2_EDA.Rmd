@@ -1,5 +1,5 @@
 ---
-title: '**TFM: Exploratory Data Analysis (EDA)**'
+title: '**TFM: exploratory Data Analysis (EDA)**'
 author: '*Roberto Jesús Alcaraz Molina*'
 date: "14/04/2021"
 output:
@@ -27,7 +27,8 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker)
+pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork)
+theme_set(theme_bw())
 
 # Models packages
 pacman::p_load(ranger)
@@ -42,148 +43,175 @@ insurance_caidas <- readRDS("insurance_caidas.RDS")
 
 # Description of the variables
 
-- CLAVE: Identification of the person
-- PERIODO: Period (year)
-- COVER: Number of coverages (1, 2 or 3)
-- SEXO: 
-- FUMADOR:       
-- BUENA_SALUD: Yes or No  
-- EDAD_ACTUARIAL: actuarial age in each year
-- EDAD_SUS: actuarial age in the moment of suscription  
-- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
-- SINIESTRO: Yes or No
+Indicative variables:
+- `ID`
+- `key`
 
-- DURACION: Number of years in force of the policy
-- DURACION_CAT: Rounded duration
+Categorical variables (10 + 1):
+- `accident` (target)
+- `period`
+- `cover`
+- `sex`
+- `smoker`
+- `good_health`
 
-- CAPITAL:
-- CAPITAL_CAT1: 
-- CAPITAL_CAT2:      
-- CAPITAL_CAT3: 
-- CAPITAL_CAT1_DESC: 
-- CAPITAL_CAT2_DESC:
-- CAPITAL_CAT3_DESC:
-
-- IMC:          
-- IMC_CAT1:    
-- IMC_CAT2:          
-- IMC_CAT3:
-- IMC_CAT1_DESC:    
-- IMC_CAT2_DESC:  
-
-```{r}
-# COVER
-table(insurance$COVER)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = COVER)) +
-  geom_bar() + theme_bw()
-```
-
-```{r}
-# SEXO
-table(insurance$SEXO)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = SEXO)) +
-  geom_bar() + theme_bw()
-```
-
-```{r}
-# FUMADOR
-table(insurance$FUMADOR)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = FUMADOR)) +
-  geom_bar() + theme_bw()
-```
-
-```{r}
-# BUENA_SALUD  
-table(insurance$BUENA_SALUD)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = BUENA_SALUD)) +
-  geom_bar() + theme_bw()
-```
-
-```{r}
-# EDAD_ACTUARIAL
-insurance %>%
-  ggplot(aes(x = EDAD_ACTUARIAL)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = EDAD_ACTUARIAL)) +
-  geom_density() + theme_bw()
-
-# EDAD_SUS
-insurance %>%
-  ggplot(aes(x = EDAD_SUS)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = EDAD_SUS)) +
-  geom_density() + theme_bw()
-```
-
-```{r}
-# EXP
-table(ifelse(insurance$EXP == 1, "=1", "<1"))/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = EXP)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = EXP)) +
-  geom_density() + theme_bw()
-```
-
+- `capital_factor_1`
+- `capital_factor_2`
+- `capital_factor_3`
+- `IMC_factor_1`
+- `IMC_factor_2`
 
 ```{r}
 # accident
 table(insurance$accident)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = accident)) +
-  geom_bar() + theme_bw()
 ```
 
 ```{r}
-# DURACION
-insurance %>%
-  ggplot(aes(x = DURACION)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = DURACION)) +
-  geom_density() + theme_bw()
+# COVER
+table(insurance$cover)/nrow(insurance)
 
-# DURACION_CAT
 insurance %>%
-  ggplot(aes(x = DURACION_CAT)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = DURACION_CAT)) +
-  geom_density() + theme_bw()
+  ggplot(aes(x = cover)) +
+  geom_bar() 
+
+tab <- table(insurance$cover, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ```
 
 ```{r}
-# CAPITAL
-summary(insurance$CAPITAL)
-insurance %>%
-  ggplot(aes(x = CAPITAL)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = CAPITAL)) +
-  geom_density() + theme_bw()
+# sex
+table(insurance$sex)/nrow(insurance)
 
-# CAPITAL_DESC
-table(insurance$CAPITAL_CAT1_DESC)/nrow(insurance)
 insurance %>%
-  ggplot(aes(x = CAPITAL_CAT1_DESC)) +
-  geom_bar() + theme_bw()
+  ggplot(aes(x = sex)) +
+  geom_bar() 
 
-table(insurance$CAPITAL_CAT2_DESC)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = CAPITAL_CAT2_DESC)) +
-  geom_bar() + theme_bw()
+tab <- table(insurance$sex, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
 
-table(insurance$CAPITAL_CAT3_DESC)/nrow(insurance)
+```{r}
+# smoker
+table(insurance$smoker)/nrow(insurance)
+
 insurance %>%
-  ggplot(aes(x = CAPITAL_CAT3_DESC)) +
-  geom_bar() + theme_bw()
+  ggplot(aes(x = smoker)) +
+  geom_bar() 
+
+tab <- table(insurance$smoker, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+```{r}
+# good_health  
+table(insurance$good_health)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = good_health)) +
+  geom_bar() 
+tab <- table(insurance$good_health, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+```{r}
+# capital_DESC
+table(insurance$capital_factor_1)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = capital_factor_1)) +
+  geom_bar() 
+
+tab <- table(insurance$capital_factor_1, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+table(insurance$capital_factor_2)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = capital_factor_2)) +
+  geom_bar() 
+tab <- table(insurance$capital_factor_2, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+table(insurance$capital_factor_3)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = capital_factor_3)) +
+  geom_bar() 
+tab <- table(insurance$capital_factor_3, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+```{r}
+# IMC_DESC
+table(insurance$IMC_factor_1)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = IMC_factor_1)) +
+  geom_bar() 
+
+tab <- table(insurance$IMC_factor_1, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+table(insurance$IMC_factor_2)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = IMC_factor_2)) +
+  geom_bar() 
+
+tab <- table(insurance$IMC_factor_2, insurance$accident)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+
+Numerical variables (7):
+- `actuarial_age`
+- `sus_age`
+- `exp`
+- `duration`
+- `duration_cat`
+- `capital`
+- `IMC`
+
+
+```{r}
+# actuarial_age
+insurance %>%
+  ggplot(aes(x = actuarial_age)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+
+# sus_age
+insurance %>%
+  ggplot(aes(x = sus_age)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+```
+
+```{r}
+# exp
+table(ifelse(insurance$exp == 1, "=1", "<1"))/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = exp)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+```
+
+```{r}
+# duration
+insurance %>%
+  ggplot(aes(x = duration)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+
+# duration_cat
+insurance %>%
+  ggplot(aes(x = duration_cat)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+```
+
+```{r}
+# capital
+summary(insurance$capital)
+insurance %>%
+  ggplot(aes(x = capital)) +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
+
 ```
 
 ```{r}
@@ -196,21 +224,8 @@ insurance %>%
 
 insurance %>%
   ggplot(aes(x = IMC)) +
-  geom_histogram() + theme_bw()
-insurance %>%
-  ggplot(aes(x = IMC)) +
-  geom_density() + theme_bw()
-
-# IMC_DESC
-table(insurance$IMC_CAT1_DESC)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = IMC_CAT1_DESC)) +
-  geom_bar() + theme_bw()
-
-table(insurance$IMC_CAT2_DESC)/nrow(insurance)
-insurance %>%
-  ggplot(aes(x = IMC_CAT2_DESC)) +
-  geom_bar() + theme_bw()
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") 
 ```
 
 ```{r}
@@ -218,43 +233,43 @@ insurance %>%
 table(insurance_caidas$CAIDA)/nrow(insurance_caidas)
 insurance_caidas %>%
   ggplot(aes(x = CAIDA)) +
-  geom_bar() + theme_bw()
+  geom_bar() 
 ```
 
 
 
 # Modelos
 
-- CLAVE: Identification of the person
-- PERIODO: Period (year)
-- COVER: Number of coverages (1, 2 or 3)
-- SEXO: 
-- FUMADOR:       
-- BUENA_SALUD: Yes or No  
-- EDAD_ACTUARIAL: actuarial age in each year
-- EDAD_SUS: actuarial age in the moment of suscription  
-- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
-- SINIESTRO: Yes or No
+Indicative variables:
+- `ID`
+- `key`
 
-- DURACION: Number of years in force of the policy
-- DURACION_CAT: Rounded duration
+Categorical variables (10 + 1):
+- `accident` (target)
+- `period`
+- `cover`
+- `sex`
+- `smoker`
+- `good_health`
 
-- CAPITAL:
-- CAPITAL_CAT1: 
-- CAPITAL_CAT2:      
-- CAPITAL_CAT3: 
-- CAPITAL_CAT1_DESC: 
-- CAPITAL_CAT2_DESC:
-- CAPITAL_CAT3_DESC:
+- `capital_factor_1`
+- `capital_factor_2`
+- `capital_factor_3`
+- `IMC_factor_1`
+- `IMC_factor_2`
 
-- IMC:          
-- IMC_CAT1:    
-- IMC_CAT2:          
-- IMC_CAT3:
-- IMC_CAT1_DESC:    
-- IMC_CAT2_DESC: 
+Numerical variables (7):
+- `actuarial_age`
+- `sus_age`
+- `exp`
+- `duration`
+- `duration_cat`
+- `capital`
+- `IMC`
 
-## Explanatory model
+
+
+## explanatory model
 
 ```{r}
 set.seed(123)
@@ -264,12 +279,12 @@ insurance_test <- testing(insurance_split)
 ```
 
 ```{r}
-my_formula_1 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
-my_formula_2 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT1_DESC)
-my_formula_3 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT2_DESC)
-my_formula_4 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT1_DESC)
-my_formula_5 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT2_DESC)
-my_formula_6 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT3_DESC)
+my_formula_1 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC)
+my_formula_2 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_1)
+my_formula_3 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_2)
+my_formula_4 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + IMC + capital_factor_1)
+my_formula_5 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + IMC + capital_factor_2)
+my_formula_6 <- as.formula(accident ~ PERIODO + cover + sex + smoker + good_health + actuarial_age + exp + duration + IMC + capital_factor_3)
 ```
 
 
@@ -307,7 +322,7 @@ summary(pred)
 ```{r}
 set.seed(123)
 
-insurance_1 <- insurance[, c("PERIODO", "COVER", "SEXO", "FUMADOR", "BUENA_SALUD", "EDAD_ACTUARIAL", "accident", "EXP", "DURACION", "CAPITAL", "IMC")]
+insurance_1 <- insurance[, c("PERIODO", "cover", "sex", "smoker", "good_health", "actuarial_age", "accident", "exp", "duration", "capital", "IMC")]
 
 insurance_split_1 <- initial_split(data = insurance_1, prop = 3/4, strata = accident)
 insurance_train_1 <- training(insurance_split_1)
