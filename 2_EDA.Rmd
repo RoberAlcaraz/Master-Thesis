@@ -1,0 +1,351 @@
+---
+title: '**TFM: Exploratory Data Analysis (EDA)**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "14/04/2021"
+output:
+  pinsurance_document:
+    toc: T
+    fig_caption: yes
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = F, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+pacman::p_load(tidyverse, tidymodels, workflows, tune, dotwhisker)
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+```{r}
+insurance <- readRDS("insurance.RDS")
+insurance_accident <- readRDS("insurance_accident.RDS")
+insurance_caidas <- readRDS("insurance_caidas.RDS")
+```
+
+
+# Description of the variables
+
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
+
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
+
+- CAPITAL:
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC:  
+
+```{r}
+# COVER
+table(insurance$COVER)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = COVER)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# SEXO
+table(insurance$SEXO)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = SEXO)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# FUMADOR
+table(insurance$FUMADOR)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = FUMADOR)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# BUENA_SALUD  
+table(insurance$BUENA_SALUD)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = BUENA_SALUD)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# EDAD_ACTUARIAL
+insurance %>%
+  ggplot(aes(x = EDAD_ACTUARIAL)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = EDAD_ACTUARIAL)) +
+  geom_density() + theme_bw()
+
+# EDAD_SUS
+insurance %>%
+  ggplot(aes(x = EDAD_SUS)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = EDAD_SUS)) +
+  geom_density() + theme_bw()
+```
+
+```{r}
+# EXP
+table(ifelse(insurance$EXP == 1, "=1", "<1"))/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = EXP)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = EXP)) +
+  geom_density() + theme_bw()
+```
+
+
+```{r}
+# accident
+table(insurance$accident)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = accident)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# DURACION
+insurance %>%
+  ggplot(aes(x = DURACION)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = DURACION)) +
+  geom_density() + theme_bw()
+
+# DURACION_CAT
+insurance %>%
+  ggplot(aes(x = DURACION_CAT)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = DURACION_CAT)) +
+  geom_density() + theme_bw()
+```
+
+```{r}
+# CAPITAL
+summary(insurance$CAPITAL)
+insurance %>%
+  ggplot(aes(x = CAPITAL)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = CAPITAL)) +
+  geom_density() + theme_bw()
+
+# CAPITAL_DESC
+table(insurance$CAPITAL_CAT1_DESC)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = CAPITAL_CAT1_DESC)) +
+  geom_bar() + theme_bw()
+
+table(insurance$CAPITAL_CAT2_DESC)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = CAPITAL_CAT2_DESC)) +
+  geom_bar() + theme_bw()
+
+table(insurance$CAPITAL_CAT3_DESC)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = CAPITAL_CAT3_DESC)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# IMC
+summary(insurance$IMC)
+
+# Persona de 1.80 y 180kg: 55.6 de IMC
+insurance %>%
+  filter(IMC > 55)
+
+insurance %>%
+  ggplot(aes(x = IMC)) +
+  geom_histogram() + theme_bw()
+insurance %>%
+  ggplot(aes(x = IMC)) +
+  geom_density() + theme_bw()
+
+# IMC_DESC
+table(insurance$IMC_CAT1_DESC)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = IMC_CAT1_DESC)) +
+  geom_bar() + theme_bw()
+
+table(insurance$IMC_CAT2_DESC)/nrow(insurance)
+insurance %>%
+  ggplot(aes(x = IMC_CAT2_DESC)) +
+  geom_bar() + theme_bw()
+```
+
+```{r}
+# CAIDAS
+table(insurance_caidas$CAIDA)/nrow(insurance_caidas)
+insurance_caidas %>%
+  ggplot(aes(x = CAIDA)) +
+  geom_bar() + theme_bw()
+```
+
+
+
+# Modelos
+
+- CLAVE: Identification of the person
+- PERIODO: Period (year)
+- COVER: Number of coverages (1, 2 or 3)
+- SEXO: 
+- FUMADOR:       
+- BUENA_SALUD: Yes or No  
+- EDAD_ACTUARIAL: actuarial age in each year
+- EDAD_SUS: actuarial age in the moment of suscription  
+- EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
+- SINIESTRO: Yes or No
+
+- DURACION: Number of years in force of the policy
+- DURACION_CAT: Rounded duration
+
+- CAPITAL:
+- CAPITAL_CAT1: 
+- CAPITAL_CAT2:      
+- CAPITAL_CAT3: 
+- CAPITAL_CAT1_DESC: 
+- CAPITAL_CAT2_DESC:
+- CAPITAL_CAT3_DESC:
+
+- IMC:          
+- IMC_CAT1:    
+- IMC_CAT2:          
+- IMC_CAT3:
+- IMC_CAT1_DESC:    
+- IMC_CAT2_DESC: 
+
+## Explanatory model
+
+```{r}
+set.seed(123)
+insurance_split <- initial_split(data = insurance, prop = 3/4, strata = accident)
+insurance_train <- training(insurance_split)
+insurance_test <- testing(insurance_split)
+```
+
+```{r}
+my_formula_1 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC)
+my_formula_2 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT1_DESC)
+my_formula_3 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + CAPITAL + IMC_CAT2_DESC)
+my_formula_4 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT1_DESC)
+my_formula_5 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT2_DESC)
+my_formula_6 <- as.formula(accident ~ PERIODO + COVER + SEXO + FUMADOR + BUENA_SALUD + EDAD_ACTUARIAL + EXP + DURACION + IMC + CAPITAL_CAT3_DESC)
+```
+
+
+```{r}
+glm_model <- logistic_reg() %>% 
+  set_engine("glm") %>% 
+  set_mode("classification")
+
+glm_fit <- glm_model %>%
+  fit(my_formula_1, data = insurance_train)
+
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+
+test_predictions <- predict(glm_fit, new_data = insurance_test)
+test_predictions <- test_predictions %>%
+  mutate(accident = insurance_test$accident)
+
+test_predictions %>% 
+  conf_mat(truth = accident, estimate = .pred_class) %>%
+  summary()
+```
+
+
+```{r}
+fit <- glm(formula = my_formula, data = insurance_training, family = binomial)
+summary(fit)
+
+pred <- predict(fit, newdata = insurance_testing, type = "response")
+summary(pred)
+```
+
+```{r}
+set.seed(123)
+
+insurance_1 <- insurance[, c("PERIODO", "COVER", "SEXO", "FUMADOR", "BUENA_SALUD", "EDAD_ACTUARIAL", "accident", "EXP", "DURACION", "CAPITAL", "IMC")]
+
+insurance_split_1 <- initial_split(data = insurance_1, prop = 3/4, strata = accident)
+insurance_train_1 <- training(insurance_split_1)
+insurance_test_1  <- testing(insurance_split_1)
+# cv
+insurance_train_1_cv <- vfold_cv(insurance_train_1)
+
+sin_recipe <- 
+  recipe(accident ~ ., data = insurance_1) %>%
+  step_normalize(all_numeric()) %>%
+  step_BoxCox(accident)
+
+insurance_train_preprocessed <- sin_recipe %>%
+  prep(insurance_train_1) 
+```
+
+```{r}
+rf_model <- 
+  rand_forest() %>%
+  set_args(mtry = tune()) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification") 
+
+rf_workflow <- workflow() %>%
+  add_recipe(sin_recipe) %>%
+  add_model(rf_model)
+
+rf_grid <- expand.grid(mtry = c(3, 4, 5))
+# extract results
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = insurance_train_1_cv, #CV object
+            grid = rf_grid, # grid of values to try
+            metrics = metric_set(accuracy, roc_auc) # metrics we care about
+            )
+
+# print results
+rf_tune_results %>%
+  collect_metrics()
+```
+
+
