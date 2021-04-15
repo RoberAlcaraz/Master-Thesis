@@ -56,6 +56,37 @@ rec <-
 
 # Creating different sets of predictors
 
+```{r}
+set_predictors <- list(
+  # original
+  base = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
+  
+  # only numerical variables
+  only_num = accident ~ actuarial_age + exp + duration + capital + IMC,
+  
+  # sus_age instead of actuarial age
+  suscription = accident ~ period + cover + sex + smoker + good_health + sus_age + exp + duration + capital + IMC,
+  
+  # int duration
+  dur_cat = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration_cat + capital + IMC,
+  
+  # capital factor 1 instead of capital
+  cap_1 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_1 + IMC,
+  
+  # capital factor 2 instead of capital
+  cap_2 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_2 + IMC,
+  
+  # capital factor 3 instead of capital
+  cap_3 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_3 + IMC,
+  
+  # IMC factor 1 instead of IMC
+  IMC_1 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_1,
+  
+  # IMC factor 2 instead of IMC
+  IMC_2 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_2
+  
+)
+```
 
 
 
