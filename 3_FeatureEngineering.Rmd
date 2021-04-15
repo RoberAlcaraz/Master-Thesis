@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR)
 theme_set(theme_bw())
 
 # Models packages
@@ -52,7 +52,71 @@ insurance_test <- testing(insurance_split)
 # Recipe
 rec <- 
   recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_workflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
 ```
+
+# Croos-validation
+
+```{r}
+set.seed(23)
+insurance_folds <- vfold_cv(insurance_train, v = 5,
+                            strata = accident)
+```
+
+```{r}
+keep_pred <- control_resamples(save_pred = TRUE, 
+                               save_workflow = TRUE)
+
+set.seed(23)
+glm_res <- glm_workflow %>%
+  fit_resamples(
+    resamples = insurance_folds,
+    control = keep_pred
+  )
+
+collect_metrics(glm_res)
+```
+
+Let's try now with the modified recipe:
+
+```{r}
+rec <- rec %>%
+  themis::step_downsample(accident) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_log(capital, IMC, base = 10)
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_workflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+```
+
+```{r}
+set.seed(23)
+glm_res <- glm_workflow %>%
+  fit_resamples(
+    resamples = insurance_folds,
+    control = keep_pred,
+    metrics = metric_set()
+  )
+
+glm_res
+
+collect_metrics(glm_res)
+```
+
 
 # Creating different sets of predictors
 
@@ -89,7 +153,26 @@ set_predictors <- list(
 ```
 
 
+```{r}
+glm_models <- workflow_set(
+  preproc = set_predictors,
+  models = list(glm = glm_model)
+)
 
+glm_models
+```
+
+```{r}
+glm_models <- glm_models %>%
+  mutate(
+    fit = map2(info,
+               wflow_id,
+               ~ fit(.x$workflow[[1]], insurance_train)
+               )
+    )
+
+glm_models$fit[[1]]
+```
 
 
 
