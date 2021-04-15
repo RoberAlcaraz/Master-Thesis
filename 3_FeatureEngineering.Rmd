@@ -1,0 +1,77 @@
+---
+title: '**TFM: Feature Engineering**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "14/04/2021"
+output:
+  pinsurance_document:
+    toc: T
+    fig_caption: yes
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = F, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR)
+theme_set(theme_bw())
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+# Necessary code
+```{r}
+insurance <- readRDS("insurance.RDS")
+insurance_accident <- readRDS("insurance_accident.RDS")
+insurance_caidas <- readRDS("insurance_caidas.RDS")
+
+
+set.seed(123)
+
+insurance_split <- initial_split(insurance, 
+                                 prop = 0.7, 
+                                 strata = accident)
+insurance_train <- training(insurance_split)
+insurance_test <- testing(insurance_split)
+
+# Recipe
+rec <- 
+  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+```
+
+# Creating different sets of predictors
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
