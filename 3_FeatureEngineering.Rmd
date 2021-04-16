@@ -37,21 +37,22 @@ pacman::p_load(ranger)
 # Necessary code
 ```{r}
 insurance <- readRDS("insurance.RDS")
-insurance_accident <- readRDS("insurance_accident.RDS")
-insurance_caidas <- readRDS("insurance_caidas.RDS")
+insurance_mortality <- readRDS("insurance_mortality.RDS")
+insurance_lapse <- readRDS("insurance_lapse.RDS")
 
 
 set.seed(123)
 
 insurance_split <- initial_split(insurance, 
                                  prop = 0.7, 
-                                 strata = accident)
+                                 strata = mortality)
+
 insurance_train <- training(insurance_split)
 insurance_test <- testing(insurance_split)
 
 # Recipe
 rec <- 
-  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
 
 # Model
 glm_model <- logistic_reg() %>%
@@ -67,8 +68,7 @@ glm_workflow <- workflow() %>%
 
 ```{r}
 set.seed(23)
-insurance_folds <- vfold_cv(insurance_train, v = 5,
-                            strata = accident)
+insurance_folds <- vfold_cv(insurance_train, v = 5, strata = mortality)
 ```
 
 ```{r}
@@ -89,7 +89,7 @@ Let's try now with the modified recipe:
 
 ```{r}
 rec <- rec %>%
-  themis::step_downsample(accident) %>%
+  themis::step_downsample(mortality) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
   step_log(capital, IMC, base = 10)
 
@@ -131,31 +131,31 @@ stopCluster(cl)
 ```{r}
 set_predictors <- list(
   # original
-  base = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
+  base = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
   
   # only numerical variables
-  only_num = accident ~ actuarial_age + exp + duration + capital + IMC,
+  only_num = mortality ~ actuarial_age + exp + duration + capital + IMC,
   
   # sus_age instead of actuarial age
-  suscription = accident ~ period + cover + sex + smoker + good_health + sus_age + exp + duration + capital + IMC,
+  suscription = mortality ~ period + cover + sex + smoker + good_health + sus_age + exp + duration + capital + IMC,
   
   # int duration
-  dur_cat = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration_cat + capital + IMC,
+  dur_cat = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration_cat + capital + IMC,
   
   # capital factor 1 instead of capital
-  cap_1 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_1 + IMC,
+  cap_1 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_1 + IMC,
   
   # capital factor 2 instead of capital
-  cap_2 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_2 + IMC,
+  cap_2 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_2 + IMC,
   
   # capital factor 3 instead of capital
-  cap_3 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_3 + IMC,
+  cap_3 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_3 + IMC,
   
   # IMC factor 1 instead of IMC
-  IMC_1 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_1,
+  IMC_1 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_1,
   
   # IMC factor 2 instead of IMC
-  IMC_2 = accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_2
+  IMC_2 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_2
   
 )
 ```

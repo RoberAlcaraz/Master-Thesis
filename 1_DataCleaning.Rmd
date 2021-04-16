@@ -46,12 +46,12 @@ insurance <- readRDS("BBDD_DEFINITIVA_V4.RDS")
 - EDAD_ACTUARIAL: actuarial age in each year
 - EDAD_SUS: actuarial age in the moment of suscription  
 - EXP: Tiempo de exposición de la póliza al riesgo de fallecimiento durante el año.
-- accident: Yes or No
+- mortality: Yes or No
 
 - DURACION: Number of years in force of the policy
 - DURACION_CAT: Rounded duration
 
-- CAPITAL: Capital asegurado. Dinero que recibirá el beneficiario en caso de accident
+- CAPITAL: Capital asegurado. Dinero que recibirá el beneficiario en caso de mortality
 
 - CAPITAL_CAT1: 
 - CAPITAL_CAT2:      
@@ -68,52 +68,50 @@ insurance <- readRDS("BBDD_DEFINITIVA_V4.RDS")
 - IMC_CAT2_DESC:  
 
 ```{r}
-insurance$PERIODO           <- factor(insurance$PERIODO)
-insurance$COVER             <- factor(insurance$COVER)
-insurance$SEXO              <- factor(ifelse(insurance$SEXO == 0, "man", "woman"))
-insurance$FUMADOR           <- factor(ifelse(insurance$FUMADOR == 0, "no", "yes"))
-insurance$BUENA_SALUD       <- factor(ifelse(insurance$BUENA_SALUD == 1, "yes", "no"))
-insurance$EXP               <- as.numeric(gsub(",", ".", gsub("\\.", "", insurance$EXP)))
-insurance$SINIESTRO         <- factor(ifelse(insurance$SINIESTRO == 1, "yes", "no"))
-insurance$DURACION          <- as.numeric(gsub(",",".", gsub("\\.", "", insurance$DURACION)))
-insurance$CAPITAL_CAT1_DESC <- factor(insurance$CAPITAL_CAT1_DESC, 
-                                      levels = c("0-30.000", "30.001-60.000", 
-                                                 "60.001-90.000","90.001-120.000", 
-                                                 "120.001-150.000", "+150.000"),
-                                      ordered = T)
-
-insurance$CAPITAL_CAT2_DESC <- factor(insurance$CAPITAL_CAT2_DESC, 
-                                      levels = c("0-60.000", "60.001-120.000", 
-                                                 "+120.000"),
-                                      ordered = T)
-
-insurance$CAPITAL_CAT3_DESC <- factor(insurance$CAPITAL_CAT3_DESC, 
-                                      levels = c("0-100.000", "100.001-200.000", 
-                                                 "+200.000"),
-                                      ordered = T)
-
-insurance$IMC               <- as.numeric(gsub(",", ".", gsub("\\.", "", insurance$IMC)))
-
-insurance$IMC_CAT1_DESC     <- factor(insurance$IMC_CAT1_DESC, 
-                                      levels = c("Normal", "Riesgo"),
-                                      labels = c("normal", "risk"))
-
-insurance$IMC_CAT2_DESC     <- factor(insurance$IMC_CAT2_DESC,
-                                      levels = c("Normal", "Sobrepeso"),
-                                      labels = c("normal", "overweight"))
-```
-
-Then, we rename the variables and remove some of them
-```{r}
 insurance <- insurance %>%
-  rename(key = CLAVE, period = PERIODO, cover = COVER, sex = SEXO,  smoker = FUMADOR,
-         good_health = BUENA_SALUD, actuarial_age =  EDAD_ACTUARIAL, sus_age = EDAD_SUS,
-         exp = EXP, accident = SINIESTRO , duration = DURACION, duration_cat = DURACION_CAT,
-         capital = CAPITAL, capital_factor_1 = CAPITAL_CAT1_DESC, capital_factor_2 = CAPITAL_CAT2_DESC,
-         capital_factor_3 = CAPITAL_CAT3_DESC, IMC_factor_1 = IMC_CAT1_DESC, IMC_factor_2 = IMC_CAT2_DESC)
-
-insurance <- insurance %>%
-  select(- c(CAPITAL_CAT1, CAPITAL_CAT2, CAPITAL_CAT3, IMC_CAT1, IMC_CAT2, IMC_CAT3))
+  rename(
+    key              = CLAVE, 
+    actuarial_age    = EDAD_ACTUARIAL, 
+    sus_age          = EDAD_SUS,
+    duration_cat     = DURACION_CAT,
+    capital          = CAPITAL,
+    ) %>%
+  mutate(
+    period           = factor(insurance$PERIODO),
+    cover            = factor(insurance$COVER),
+    sex              = factor(ifelse(insurance$SEXO == 0, "man", "woman")),
+    smoker           = factor(ifelse(insurance$FUMADOR == 0, "no", "yes")),
+    good_health      = factor(ifelse(insurance$BUENA_SALUD == 1, "yes", "no")),
+    exp              = as.numeric(gsub(",", ".", gsub("\\.", "", insurance$EXP))),
+    mortality        = factor(ifelse(insurance$SINIESTRO == 1, "yes", "no")),
+    duration         = as.numeric(gsub(",",".", gsub("\\.", "", insurance$DURACION))),
+    capital_factor_1 = factor(insurance$CAPITAL_CAT1_DESC, 
+                              levels = c("0-30.000", "30.001-60.000", 
+                                         "60.001-90.000","90.001-120.000", 
+                                         "120.001-150.000", "+150.000"),
+                              ordered = T),
+    capital_factor_2 = factor(insurance$CAPITAL_CAT2_DESC, 
+                              levels = c("0-60.000", "60.001-120.000", 
+                                         "+120.000"),
+                              ordered = T),
+    capital_factor_3 = factor(insurance$CAPITAL_CAT3_DESC, 
+                              levels = c("0-100.000", "100.001-200.000", 
+                                         "+200.000"),
+                              ordered = T),
+    IMC              = as.numeric(gsub(",", ".", gsub("\\.", "", insurance$IMC))),
+    IMC_factor_1     = factor(insurance$IMC_CAT1_DESC, 
+                              levels = c("Normal", "Riesgo"),
+                              labels = c("normal", "risk")),
+    IMC_factor_2     = factor(insurance$IMC_CAT2_DESC,
+                              levels = c("Normal", "Sobrepeso"),
+                              labels = c("normal", "overweight"))
+  ) %>%
+  
+  select(
+    key, period, cover, sex,  smoker, good_health, actuarial_age, sus_age, exp,
+    mortality, duration, duration_cat, capital, capital_factor_1, capital_factor_2,
+    capital_factor_3, IMC, IMC_factor_1, IMC_factor_2
+  )
 ```
 
 Here, we remove the repeated columns
@@ -122,14 +120,14 @@ insurance <- tibble::rowid_to_column(insurance, "ID")
 
 # here we take the IDs that are not repeated
 IDs <- insurance %>%
-  arrange(desc(accident)) %>%
+  arrange(desc(mortality)) %>%
   distinct_at(vars(key, period, cover), .keep_all = T) %>%
   select(ID)
 
-# here we ensure that the rows we are removing have accident = 0
+# here we ensure that the rows we are removing have mortality = 0
 insurance %>%
   filter(!(ID %in% IDs$ID)) %>%
-  select(accident) %>%
+  select(mortality) %>%
   summary()
 
 insurance <- insurance %>%
@@ -140,53 +138,53 @@ insurance
 
 Also, we create another df of only the people that had some sinister
 ```{r}
-# accidentS
-key_accident <- insurance %>% # tomamos todas las claves de las personas con accident
-  filter(accident == "yes") %>%
+# mortalityS
+key_mortality <- insurance %>% # tomamos todas las claves de las personas con mort
+  filter(mortality == "yes") %>%
   select(key)
 
-insurance_accident <- insurance %>%
-  filter(key %in% key_accident$key)
+insurance_mortality <- insurance %>%
+  filter(key %in% key_mortality$key)
 
-insurance_accident
+insurance_mortality
 ```
 
 And another one with the people that drop
 ```{r}
-# CAIDAS
-# Here we take the keys of the caidas
+# lapse
+# Here we take the keys of the lapse
 
-keys_caidas <- insurance %>%
-  filter((key %in% key_accident$key) == F) %>%
+keys_lapse <- insurance %>%
+  filter((key %in% key_mortality$key) == F) %>%
   group_by(key) %>%
   count() %>%
-  mutate(CAIDA = ifelse(n == 1 | n == 2, "yes", "no")) %>%
-  filter(CAIDA == "yes") %>%
+  mutate(lapse = ifelse(n == 1 | n == 2, "yes", "no")) %>%
+  filter(lapse == "yes") %>%
   select(key)
 
-insurance_caidas <- insurance %>%
-  filter((key %in% key_accident$key) == F) %>%
-  mutate(CAIDA = ifelse(key %in% keys_caidas$key, "yes", "no")) %>%
+insurance_lapse <- insurance %>%
+  filter((key %in% key_mortality$key) == F) %>%
+  mutate(lapse = ifelse(key %in% keys_lapse$key, "yes", "no")) %>%
   arrange(key) 
 
-for (i in 2:nrow(insurance_caidas)){
-  if (insurance_caidas$CAIDA[i-1] == "yes") {
-    if (insurance_caidas$key[i-1] == insurance_caidas$key[i]) {
-      insurance_caidas$CAIDA[i-1] = "no"
+for (i in 2:nrow(insurance_lapse)){
+  if (insurance_lapse$lapse[i-1] == "yes") {
+    if (insurance_lapse$key[i-1] == insurance_lapse$key[i]) {
+      insurance_lapse$lapse[i-1] = "no"
     }
   }
 }
 
-insurance_caidas
+insurance_lapse
 ```
 
 ```{r}
 # saveRDS(insurance, file = "insurance.RDS")
-# saveRDS(insurance_accident, file = "insurance_accident.RDS")
-# saveRDS(insurance_caidas, file = "insurance_caidas.RDS")
+# saveRDS(insurance_mortality, file = "insurance_mortality.RDS")
+# saveRDS(insurance_lapse, file = "insurance_lapse.RDS")
 
 insurance <- readRDS("insurance.RDS")
-insurance_accident <- readRDS("insurance_accident.RDS")
-insurance_caidas <- readRDS("insurance_caidas.RDS")
+insurance_mortality <- readRDS("insurance_mortality.RDS")
+insurance_lapse <- readRDS("insurance_lapse.RDS")
 ```
 

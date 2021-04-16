@@ -36,8 +36,8 @@ pacman::p_load(ranger)
 
 ```{r}
 insurance <- readRDS("insurance.RDS")
-insurance_accident <- readRDS("insurance_accident.RDS")
-insurance_caidas <- readRDS("insurance_caidas.RDS")
+insurance_mortality <- readRDS("insurance_mortality.RDS")
+insurance_lapse <- readRDS("insurance_lapse.RDS")
 ```
 
 
@@ -52,7 +52,7 @@ Our variables are:
 
 - **Categorical variables (10 + 1)**:
 
-  - `accident` (target)
+  - `mortality` (target)
   - `period`
   - `cover`
   - `sex`
@@ -75,27 +75,29 @@ Our variables are:
   - `capital`
   - `IMC`
 
-## Target variable: `accident`
+## Target variable: `mortality`
 
 ```{r}
-# accident
-table(insurance$accident)/nrow(insurance)
+# mortality
+table(insurance$mortality)/nrow(insurance)
 ```
 
 We are going to split the data in 70% for training and 30% for testing
 ```{r}
 set.seed(123)
 
-insurance_split <- initial_split(insurance, prop = 0.7, strata = accident)
+insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
 
 insurance_train <- training(insurance_split)
+summary(insurance$mortality)
 insurance_test  <- testing(insurance_split)
+summary(insurance_test$mortality)
 ```
 
 Now, doing a simple model we can see that it is not useful:
 ```{r}
 rec <- 
-  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp +
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp +
            duration + capital + IMC, data = insurance_train)
 
 glm_model <- logistic_reg() %>%
@@ -109,9 +111,9 @@ glm_fit <- fit(glm_wflow, insurance_train)
 pred <- predict(glm_fit, insurance_test)
 
 pred <- pred %>%
-  mutate(accident = insurance_test$accident)
+  mutate(mortality = insurance_test$mortality)
 pred %>%
-  conf_mat(truth = accident,
+  conf_mat(truth = mortality,
            estimate = .pred_class)
 
 #           Truth
@@ -143,7 +145,7 @@ insurance_train %>%
   ggplot(aes(x = period)) +
   geom_bar() 
 
-tab <- table(insurance_train$period, insurance_train$accident)
+tab <- table(insurance_train$period, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ```
 
@@ -155,7 +157,7 @@ insurance_train %>%
   ggplot(aes(x = cover)) +
   geom_bar() 
 
-tab <- table(insurance_train$cover, insurance_train$accident)
+tab <- table(insurance_train$cover, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # as we increase the number of coverages, the proportion increases
@@ -169,7 +171,7 @@ insurance_train %>%
   ggplot(aes(x = sex)) +
   geom_bar() 
 
-tab <- table(insurance_train$sex, insurance_train$accident)
+tab <- table(insurance_train$sex, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # almost double in men
@@ -183,7 +185,7 @@ insurance_train %>%
   ggplot(aes(x = smoker)) +
   geom_bar() 
 
-tab <- table(insurance_train$smoker, insurance_train$accident)
+tab <- table(insurance_train$smoker, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # almost double in smokers
@@ -195,7 +197,7 @@ table(insurance_train$good_health)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = good_health)) +
   geom_bar() 
-tab <- table(insurance_train$good_health, insurance_train$accident)
+tab <- table(insurance_train$good_health, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # slightly higher for the people without good health
@@ -208,7 +210,7 @@ insurance_train %>%
   ggplot(aes(x = capital_factor_1)) +
   geom_bar() 
 
-tab <- table(insurance_train$capital_factor_1, insurance_train$accident)
+tab <- table(insurance_train$capital_factor_1, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # since we have many cateogories, we should think about encoding it.
 
@@ -217,15 +219,15 @@ table(insurance_train$capital_factor_2)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = capital_factor_2)) +
   geom_bar() 
-tab <- table(insurance_train$capital_factor_2, insurance_train$accident)
+tab <- table(insurance_train$capital_factor_2, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-# we should convert it to dummy. Lower proportion of accidents in the last group
+# we should convert it to dummy. Lower proportion of mortalitys in the last group
 
 table(insurance_train$capital_factor_3)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = capital_factor_3)) +
   geom_bar() 
-tab <- table(insurance_train$capital_factor_3, insurance_train$accident)
+tab <- table(insurance_train$capital_factor_3, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # convert it to dummy
 ```
@@ -238,7 +240,7 @@ insurance_train %>%
   ggplot(aes(x = IMC_factor_1)) +
   geom_bar() 
 
-tab <- table(insurance_train$IMC_factor_1, insurance_train$accident)
+tab <- table(insurance_train$IMC_factor_1, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 table(insurance_train$IMC_factor_2)/nrow(insurance_train)
@@ -246,7 +248,7 @@ insurance_train %>%
   ggplot(aes(x = IMC_factor_2)) +
   geom_bar() 
 
-tab <- table(insurance_train$IMC_factor_2, insurance_train$accident)
+tab <- table(insurance_train$IMC_factor_2, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # the two of them are very similar. Double in people with risk/overweight
@@ -356,7 +358,7 @@ insurance_train %>%
 
 After seeing some description of the variables, the preprocessing steps we are going to follow are:
 
-1. A method of resampling for the unbalanced class (e.g. `step_downsample(accident)`).
+1. A method of resampling for the unbalanced class (e.g. `step_downsample(mortality)`).
 2. Convert to dummy variables all categorical since it is usually useful for the majority of models.
 3. For the numeric variables `capital` and `IMC`, we will apply the log10 for making them symmetric.
 4. For the 1st categorical variable of the capital, we should encode it, since we have too many categories.
@@ -370,11 +372,11 @@ Recipe:
 ```{r}
 # Formula
 rec <- 
-  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train)
 
 # Preprocessing steps
 rec <- rec %>%
-  themis::step_downsample(accident) %>%
+  themis::step_downsample(mortality) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
   step_log(capital, IMC, base = 10)
 
@@ -382,6 +384,8 @@ rec <- rec %>%
 insurance_train_prep <- rec %>%
   prep() %>%
   bake(new_data = NULL)
+
+summary(insurance_train_prep$mortality)
 ```
 
 Model and workflow:
@@ -409,22 +413,22 @@ pred <- predict(glm_fit, insurance_train)
 prob <- predict(glm_fit, insurance_train, type = "prob")
 
 pred <- pred %>%
-  mutate(accident = insurance_train$accident)
+  mutate(mortality = insurance_train$mortality)
 
 pred %>%
-  conf_mat(truth = accident,
+  conf_mat(truth = mortality,
            estimate = .pred_class)
 
 pred %>%
-  conf_mat(truth = accident,
+  conf_mat(truth = mortality,
            estimate = .pred_class) %>%
   summary()
 
 prob <- prob %>%
-  mutate(accident = insurance_train$accident)
+  mutate(mortality = insurance_train$mortality)
 pred_curve <- prob %>%
-  roc_curve(accident, .pred_yes, event_level = "second")
+  roc_curve(mortality, .pred_yes, event_level = "second")
 prob %>%
-  roc_auc(accident, .pred_no)
+  roc_auc(mortality, .pred_no)
 autoplot(pred_curve)
 ```
