@@ -3,9 +3,9 @@ title: '**TFM: Exploratory Data Analysis (EDA)**'
 author: '*Roberto Jesús Alcaraz Molina*'
 date: "14/04/2021"
 output:
-  pinsurance_document:
-    toc: T
-    fig_caption: yes
+  prettydoc::html_pretty:
+    theme: cayman
+    df_print: paged
 header-includes: 
 - \usepackage{float}
 - \usepackage{amsbsy}
@@ -17,7 +17,7 @@ header-includes:
 
 ```{r include=FALSE}
 knitr::opts_chunk$set(warning = FALSE, 
-                      echo = F, 
+                      echo = T, 
                       message = FALSE,
                       fig.pos="H", 
                       fig.align="center",
@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR)
+pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR, dotwhisker)
 theme_set(theme_bw())
 
 # Models packages
@@ -46,25 +46,27 @@ insurance_caidas <- readRDS("insurance_caidas.RDS")
 Our variables are:
 
 - **Indicative variables**:
+
   - `ID`
   - `key`
 
 - **Categorical variables (10 + 1)**:
+
   - `accident` (target)
   - `period`
   - `cover`
   - `sex`
   - `smoker`
   - `good_health`
-  
   - `capital_factor_1`
   - `capital_factor_2`
   - `capital_factor_3`
-  
   - `IMC_factor_1`
   - `IMC_factor_2`
 
+
 -**Numerical variables (7)**:
+
   - `actuarial_age`
   - `sus_age`
   - `exp`
@@ -84,18 +86,17 @@ We are going to split the data in 70% for training and 30% for testing
 ```{r}
 set.seed(123)
 
-insurance_split <- initial_split(insurance, 
-                                 prop = 0.7, 
-                                 strata = accident)
-class(insurance_split)
+insurance_split <- initial_split(insurance, prop = 0.7, strata = accident)
+
 insurance_train <- training(insurance_split)
-insurance_test <- testing(insurance_split)
+insurance_test  <- testing(insurance_split)
 ```
 
 Now, doing a simple model we can see that it is not useful:
 ```{r}
 rec <- 
-  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+  recipe(accident ~ period + cover + sex + smoker + good_health + actuarial_age + exp +
+           duration + capital + IMC, data = insurance_train)
 
 glm_model <- logistic_reg() %>%
   set_engine("glm")
@@ -127,16 +128,15 @@ pred %>%
 - `sex`
 - `smoker`
 - `good_health`
-
 - `capital_factor_1`
 - `capital_factor_2`
 - `capital_factor_3`
 - `IMC_factor_1`
 - `IMC_factor_2`
 
+### Period
 
 ```{r}
-# Period
 table(insurance_train$period)/nrow(insurance_train)
 
 insurance_train %>%
@@ -147,9 +147,8 @@ tab <- table(insurance_train$period, insurance_train$accident)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ```
 
-
+### Cover
 ```{r}
-# COVER
 table(insurance_train$cover)/nrow(insurance_train)
 
 insurance_train %>%
@@ -162,8 +161,8 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # as we increase the number of coverages, the proportion increases
 ```
 
+### sex
 ```{r}
-# sex
 table(insurance_train$sex)/nrow(insurance_train)
 
 insurance_train %>%
@@ -176,8 +175,8 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # almost double in men
 ```
 
+### smoker
 ```{r}
-# smoker
 table(insurance_train$smoker)/nrow(insurance_train)
 
 insurance_train %>%
@@ -190,8 +189,8 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # almost double in smokers
 ```
 
+### good_health 
 ```{r}
-# good_health  
 table(insurance_train$good_health)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = good_health)) +
@@ -202,8 +201,8 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # slightly higher for the people without good health
 ```
 
+### capital_DESC
 ```{r}
-# capital_DESC
 table(insurance_train$capital_factor_1)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = capital_factor_1)) +
@@ -231,8 +230,9 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # convert it to dummy
 ```
 
+### IMC_DESC
+
 ```{r}
-# IMC_DESC
 table(insurance_train$IMC_factor_1)/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = IMC_factor_1)) +
@@ -263,8 +263,9 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 - `IMC`
 
 
+### actuarial and suscription age
 ```{r}
-# actuarial_age
+
 insurance_train %>%
   ggplot(aes(x = actuarial_age)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
@@ -278,8 +279,9 @@ insurance_train %>%
   geom_density(alpha=.2, fill="#FF6666") 
 ```
 
+### exp
+
 ```{r}
-# exp
 table(ifelse(insurance_train$exp == 1, "=1", "<1"))/nrow(insurance_train)
 insurance_train %>%
   ggplot(aes(x = exp)) +
@@ -287,9 +289,8 @@ insurance_train %>%
   geom_density(alpha=.2, fill="#FF6666")
 ```
 
+### duration
 ```{r}
-# duration
-
 insurance_train %>%
   ggplot(aes(x = duration)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
@@ -301,9 +302,8 @@ insurance_train %>%
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 ```
-
+### Capital
 ```{r}
-# capital
 summary(insurance_train$capital)
 insurance_train %>%
   ggplot(aes(x = capital)) +
@@ -321,8 +321,9 @@ insurance_train %>%
 # here we have some outliers. We should take it into account.
 ```
 
+
+### IMC
 ```{r}
-# IMC
 summary(insurance_train$IMC)
 
 insurance_train %>%
@@ -373,7 +374,7 @@ rec <-
 
 # Preprocessing steps
 rec <- rec %>%
-  step_downsample(accident) %>%
+  themis::step_downsample(accident) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
   step_log(capital, IMC, base = 10)
 

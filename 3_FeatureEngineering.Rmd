@@ -3,7 +3,7 @@ title: '**TFM: Feature Engineering**'
 author: '*Roberto Jesús Alcaraz Molina*'
 date: "14/04/2021"
 output:
-  pinsurance_document:
+  html_document:
     toc: T
     fig_caption: yes
 header-includes: 
