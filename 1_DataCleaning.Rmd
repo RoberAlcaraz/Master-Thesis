@@ -77,20 +77,20 @@ insurance$EXP               <- as.numeric(gsub(",", ".", gsub("\\.", "", insuran
 insurance$SINIESTRO         <- factor(ifelse(insurance$SINIESTRO == 1, "yes", "no"))
 insurance$DURACION          <- as.numeric(gsub(",",".", gsub("\\.", "", insurance$DURACION)))
 insurance$CAPITAL_CAT1_DESC <- factor(insurance$CAPITAL_CAT1_DESC, 
-                               levels = c("0-30.000", "30.001-60.000", 
-                                          "60.001-90.000","90.001-120.000", 
-                                          "120.001-150.000", "+150.000"),
-                               ordered = T)
+                                      levels = c("0-30.000", "30.001-60.000", 
+                                                 "60.001-90.000","90.001-120.000", 
+                                                 "120.001-150.000", "+150.000"),
+                                      ordered = T)
 
 insurance$CAPITAL_CAT2_DESC <- factor(insurance$CAPITAL_CAT2_DESC, 
-                               levels = c("0-60.000", "60.001-120.000", 
-                                          "+120.000"),
-                               ordered = T)
+                                      levels = c("0-60.000", "60.001-120.000", 
+                                                 "+120.000"),
+                                      ordered = T)
 
 insurance$CAPITAL_CAT3_DESC <- factor(insurance$CAPITAL_CAT3_DESC, 
-                               levels = c("0-100.000", "100.001-200.000", 
-                                          "+200.000"),
-                               ordered = T)
+                                      levels = c("0-100.000", "100.001-200.000", 
+                                                 "+200.000"),
+                                      ordered = T)
 
 insurance$IMC               <- as.numeric(gsub(",", ".", gsub("\\.", "", insurance$IMC)))
 

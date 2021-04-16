@@ -65,7 +65,7 @@ Our variables are:
   - `IMC_factor_2`
 
 
--**Numerical variables (7)**:
+- **Numerical variables (7)**:
 
   - `actuarial_age`
   - `sus_age`
