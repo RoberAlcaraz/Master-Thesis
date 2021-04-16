@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel)
 theme_set(theme_bw())
 
 # Models packages
@@ -104,17 +104,25 @@ glm_workflow <- workflow() %>%
 ```
 
 ```{r}
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+#########################
+
 set.seed(23)
 glm_res <- glm_workflow %>%
   fit_resamples(
     resamples = insurance_folds,
     control = keep_pred,
-    metrics = metric_set()
+    metrics = metric_set(mcc, roc_auc)
   )
 
 glm_res
 
 collect_metrics(glm_res)
+
+##########################
+
+stopCluster(cl)
 ```
 
 
