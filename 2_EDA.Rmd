@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR, dotwhisker)
+pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR, dotwhisker, splines)
 theme_set(theme_bw())
 
 # Models packages
@@ -85,6 +85,7 @@ table(insurance$mortality)/nrow(insurance)
 We are going to split the data in 70% for training and 30% for testing
 ```{r}
 set.seed(123)
+
 
 insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
 
@@ -353,6 +354,67 @@ insurance_train %>%
   geom_point()
 # we have no linear correlation between the numerical variables
 ```
+
+## Interaction terms:
+
+We can add interaction terms between two categorical variables, or one categorical and one numerical.
+
+```{r}
+insurance_train %>%
+  ggplot(aes(x = IMC, y = capital)) + 
+  geom_point(alpha = .2) + 
+  scale_x_log10() + 
+  scale_y_log10() + 
+  facet_wrap(~ sex) +
+  labs(
+    x = "",
+    y = "sex"
+  )
+
+insurance_train %>%
+  ggplot(aes(x = IMC, y = capital)) + 
+  geom_point(alpha = .2) + 
+  scale_x_log10() + 
+  scale_y_log10() + 
+  facet_wrap(~ smoker) +
+  labs(
+    x = "",
+    y = "smoker"
+  ) 
+
+# very important change
+insurance_train %>%
+  ggplot(aes(x = IMC, y = capital)) + 
+  geom_point(alpha = .2) + 
+  scale_x_log10() + 
+  scale_y_log10() + 
+  facet_wrap(~ good_health) +
+  labs(
+    x = "",
+    y = "good health"
+  )
+```
+
+Now, in order to select the variables, we are going to fit first a glm with all the variables that could affect the model and their interactions. Then, we will use an stepwise selection to get the best set of predictors.
+
+```{r}
+max_model <- glm(mortality ~ (period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC)^2 
+                 - actuarial_age:duration - actuarial_age:capital - actuarial_age:IMC - duration:capital - duration:IMC - capital:IMC, 
+                 data = insurance_train,
+                 family = "binomial")
+
+min_model <- glm(mortality ~ 1,
+                 data = insurance_train,
+                 family = "binomial")
+
+step_model <- step(max_model,
+                   direction="backward",
+                   scope=list(lower=min_model,
+                              upper=max_model), trace = 0)
+
+```
+
+
 
 ## Preprocessing steps:
 
