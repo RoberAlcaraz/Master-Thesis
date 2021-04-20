@@ -52,7 +52,8 @@ insurance_test <- testing(insurance_split)
 
 # Recipe
 rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC, data = insurance_train)
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
+         data = insurance_train)
 
 # Model
 glm_model <- logistic_reg() %>%
@@ -64,124 +65,92 @@ glm_workflow <- workflow() %>%
   add_recipe(rec)
 ```
 
-# Croos-validation
+# A simple model
 
+Recipe:
 ```{r}
-set.seed(23)
-insurance_folds <- vfold_cv(insurance_train, v = 5, strata = mortality)
-```
+# Formula
+rec <- 
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train)
 
-```{r}
-keep_pred <- control_resamples(save_pred = TRUE, 
-                               save_workflow = TRUE)
-
-set.seed(23)
-glm_res <- glm_workflow %>%
-  fit_resamples(
-    resamples = insurance_folds,
-    control = keep_pred
-  )
-
-collect_metrics(glm_res)
-```
-
-Let's try now with the modified recipe:
-
-```{r}
+# Preprocessing steps
 rec <- rec %>%
-  themis::step_downsample(mortality) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
   step_log(capital, IMC, base = 10)
 
-# Model
+# Data preprocessed
+insurance_train_prep <- rec %>%
+  prep() %>%
+  bake(new_data = NULL)
+
+summary(insurance_train_prep$mortality)
+```
+
+Model and workflow:
+```{r}
 glm_model <- logistic_reg() %>%
   set_engine("glm")
 
-# Workflow
-glm_workflow <- workflow() %>%
+glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
 ```
 
+Fitting the model and description
 ```{r}
-cl <- makePSOCKcluster(5)
-registerDoParallel(cl)
-#########################
-
-set.seed(23)
-glm_res <- glm_workflow %>%
-  fit_resamples(
-    resamples = insurance_folds,
-    control = keep_pred,
-    metrics = metric_set(mcc, roc_auc)
-  )
-
-glm_res
-
-collect_metrics(glm_res)
-
-##########################
-
-stopCluster(cl)
+glm_fit <- fit(glm_wflow, insurance_train)
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 ```
 
-
-# Creating different sets of predictors
-
+Prediction in the training set and roc curve:
 ```{r}
-set_predictors <- list(
-  # original
-  base = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
-  
-  # only numerical variables
-  only_num = mortality ~ actuarial_age + exp + duration + capital + IMC,
-  
-  # sus_age instead of actuarial age
-  suscription = mortality ~ period + cover + sex + smoker + good_health + sus_age + exp + duration + capital + IMC,
-  
-  # int duration
-  dur_cat = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration_cat + capital + IMC,
-  
-  # capital factor 1 instead of capital
-  cap_1 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_1 + IMC,
-  
-  # capital factor 2 instead of capital
-  cap_2 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_2 + IMC,
-  
-  # capital factor 3 instead of capital
-  cap_3 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital_factor_3 + IMC,
-  
-  # IMC factor 1 instead of IMC
-  IMC_1 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_1,
-  
-  # IMC factor 2 instead of IMC
-  IMC_2 = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC_factor_2
-  
-)
+pred <- predict(glm_fit, insurance_train)
+prob <- predict(glm_fit, insurance_train, type = "prob")
+
+pred <- pred %>%
+  mutate(mortality = insurance_train$mortality)
+
+pred %>%
+  conf_mat(truth = mortality,
+           estimate = .pred_class)
+
+pred %>%
+  conf_mat(truth = mortality,
+           estimate = .pred_class) %>%
+  summary()
+
+prob <- prob %>%
+  mutate(mortality = insurance_train$mortality)
+pred_curve <- prob %>%
+  roc_curve(mortality, .pred_yes, event_level = "second")
+prob %>%
+  roc_auc(mortality, .pred_no)
+autoplot(pred_curve)
 ```
 
+# Using recipes
+
+Now, we will add some interaction terms
 
 ```{r}
-glm_models <- workflow_set(
-  preproc = set_predictors,
-  models = list(glm = glm_model)
-)
+# Formula
+rec <- 
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train)
 
-glm_models
+# Preprocessing steps
+rec <- rec %>%
+  themis::step_upsample(mortality, over_ratio = 0.01) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_log(capital, IMC, base = 10)
+
+# Adding interaction terms
+rec <- rec %>%
+  step_interact(~ )
 ```
-
-```{r}
-glm_models <- glm_models %>%
-  mutate(
-    fit = map2(info,
-               wflow_id,
-               ~ fit(.x$workflow[[1]], insurance_train)
-               )
-    )
-
-glm_models$fit[[1]]
-```
-
 
 
 
