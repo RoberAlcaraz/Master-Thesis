@@ -90,9 +90,7 @@ set.seed(123)
 insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
 
 insurance_train <- training(insurance_split)
-summary(insurance$mortality)
 insurance_test  <- testing(insurance_split)
-summary(insurance_test$mortality)
 ```
 
 Now, doing a simple model we can see that it is not useful:
@@ -354,12 +352,8 @@ insurance_train %>%
 # we have no linear correlation between the numerical variables
 ```
 
-## Interaction terms:
-
-We can add interaction terms between two categorical variables, or one categorical and one numerical.
-
 ```{r, eval=F}
-# No relationship
+# No kind of relationship
 insurance_train %>%
   ggplot(aes(x = IMC, y = capital)) +
   geom_point()
@@ -383,141 +377,3 @@ insurance_train %>%
   ggplot(aes(x = actuarial_age, y = duration)) +
   geom_point()
 ```
-
-```{r}
-# NO
-insurance_train %>%
-  ggplot(aes(x = period, fill = cover)) +
-  geom_bar()
-tab <- table(insurance_train$period, insurance_train$cover)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = period, fill = sex)) +
-  geom_bar()
-tab <- table(insurance_train$period, insurance_train$sex)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = period, fill = smoker)) +
-  geom_bar()
-tab <- table(insurance_train$period, insurance_train$smoker)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = period, fill = good_health)) +
-  geom_bar()
-tab <- table(insurance_train$period, insurance_train$good_health)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# YES
-insurance_train %>%
-  ggplot(aes(x = cover, fill = sex)) +
-  geom_bar()
-tab <- table(insurance_train$cover, insurance_train$sex)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# YES
-insurance_train %>%
-  ggplot(aes(x = cover, fill = smoker)) +
-  geom_bar()
-tab <- table(insurance_train$cover, insurance_train$smoker)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# YES
-insurance_train %>%
-  ggplot(aes(x = cover, fill = good_health)) +
-  geom_bar()
-tab <- table(insurance_train$cover, insurance_train$good_health)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = sex, fill = smoker)) +
-  geom_bar()
-tab <- table(insurance_train$sex, insurance_train$smoker)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = sex, fill = good_health)) +
-  geom_bar()
-tab <- table(insurance_train$sex, insurance_train$good_health)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# NO
-insurance_train %>%
-  ggplot(aes(x = smoker, fill = good_health)) +
-  geom_bar()
-tab <- table(insurance_train$smoker, insurance_train$good_health)*100/nrow(insurance_train)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-```
-
-- `period`
-- `cover`
-- `sex`
-- `smoker`
-- `good_health`
-- `capital_factor_1`
-- `capital_factor_2`
-- `capital_factor_3`
-- `IMC_factor_1`
-- `IMC_factor_2`
-
-
-```{r}
-h <- bw.SJ(x = insurance_train$capital, method = "dpi")
-
-insurance_train %>%
-  ggplot(aes(x = capital, color = cover, fill = cover)) +
-  scale_x_log10() +
-  geom_histogram(bins = 20)
-
-insurance_train %>%
-  ggplot(aes(x = capital, color = sex, fill = sex)) +
-  scale_x_log10() +
-  geom_histogram(bins = 20)
-insurance_train %>%
-  ggplot(aes(x = capital, color = cover, fill = cover)) +
-  scale_x_log10() +
-  geom_histogram(bins = 15)
-insurance_train %>%
-  ggplot(aes(x = capital, color = cover, fill = cover)) +
-  scale_x_log10() +
-  geom_histogram(bins = 15)
-```
-
-Now, in order to select the variables, we are going to fit first a glm with all the variables that could affect the model and their interactions. Then, we will use an stepwise selection to get the best set of predictors.
-
-```{r}
-max_model <- glm(mortality ~ (period + cover + sex + smoker + good_health + actuarial_age + capital + IMC)^2 
-                 - actuarial_age:capital - actuarial_age:IMC - capital:IMC, 
-                 data = insurance_train,
-                 family = "binomial")
-
-
-min_model <- glm(mortality ~ 1,
-                 data = insurance_train,
-                 family = "binomial")
-
-step_model <- step(max_model,
-                   direction="backward",
-                   scope=list(lower=min_model,
-                              upper=max_model), trace = 0)
-```
-
-
-
-## Preprocessing steps:
-
-After seeing some description of the variables, the preprocessing steps we are going to follow are:
-
-1. A method of resampling for the unbalanced class (e.g. `step_downsample(mortality)`).
-2. Convert to dummy variables all categorical since it is usually useful for the majority of models.
-3. For the numeric variables `capital` and `IMC`, we will apply the log10 for making them symmetric.
-4. For the 1st categorical variable of the capital, we should encode it, since we have too many categories.
-
-Also, for some models, it is mandatory to scale and center the variables, but for the moment, we are not going to do it.
