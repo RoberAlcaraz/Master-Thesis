@@ -65,19 +65,199 @@ glm_workflow <- workflow() %>%
   add_recipe(rec)
 ```
 
-# A simple model
 
-Recipe:
+In this step of the project, we will analyze the following things:
+
+  - Variable selection through drop (p-value > 0.2).
+  - Interaction between variables.
+  - Preprocessing steps taking into account the EDA.
+
+# Variable selection
+
+First of all, before doing any interaction between all the variables, we will fit a simple logistic regression model to see which variables have an effect on the outcome and which does not, removing those whose p-value is greater than 0.2.
+
 ```{r}
-# Formula
+# Recipe
 rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train)
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC,
+         data = insurance_train)
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, insurance_train)
+tidy(glm_fit) %>% 
+  filter(p.value > 0.2) %>%
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+
+
+## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
+glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train, family = "binomial")
+
+drop1(glm_drop, test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover - duration"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover - duration - period"))), test = "LRT")
+```
+
+Therefore, we will remove the variables cover, duration and period from our model, and we could create an inferential model to explain better the mortality in terms of the predictors
+
+### Inferential model
+```{r}
+set.seed(23)
+# Recipe
+rec <- 
+  recipe(mortality ~ sex + smoker + good_health + actuarial_age + capital + IMC, data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01)
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, insurance_train)
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+
+tidy(glm_fit) %>%
+  mutate(
+    odds_ratio = exp(estimate)
+  ) %>%
+  select(term, odds_ratio)
+```
+
+For instance, we can observe that if you were a woman, the odds of mortality are 0.64 times lower than if you were a man. However, this model is saying that if you had good health, the odds of mortality are 2.26 times bigger than if you had a bad health, which does not make much sense.
+
+
+# Interaction terms
+
+Now, our model is going to be formed by the variables sex, smoker, good_health, actuarial_age, capital and IMC. Regarding the interactions, we can add interaction terms between two categorical variables, or between one categorical and one numerical.
+
+```{r}
+# Interactions between the categorical variables:
+insurance_train %>%
+  ggplot(aes(x = sex, fill = smoker)) +
+  geom_bar()
+tab <- table(insurance_train$sex, insurance_train$smoker)*100/nrow(insurance_train)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+insurance_train %>%
+  ggplot(aes(x = sex, fill = good_health)) +
+  geom_bar()
+tab <- table(insurance_train$sex, insurance_train$good_health)*100/nrow(insurance_train)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+insurance_train %>%
+  ggplot(aes(x = smoker, fill = good_health)) +
+  geom_bar()
+tab <- table(insurance_train$smoker, insurance_train$good_health)*100/nrow(insurance_train)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+```{r}
+# Interactions between actuarial_age and the categorical variables:
+a <- insurance_train %>%
+  ggplot(aes(x = actuarial_age, color = sex, fill = sex)) +
+  geom_density(alpha = 0.4)
+b <- insurance_train %>%
+  ggplot(aes(x = actuarial_age, color = smoker, fill = smoker)) +
+  geom_density(alpha = 0.4)
+c <- insurance_train %>%
+  ggplot(aes(x = actuarial_age, color = good_health, fill = good_health)) +
+  geom_density(alpha = 0.4)
+
+a / b / c
+```
+
+```{r}
+# Interactions between capital and the categorical variables:
+a <- insurance_train %>%
+  ggplot(aes(x = capital, color = sex, fill = sex)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+b <- insurance_train %>%
+  ggplot(aes(x = capital, color = smoker, fill = smoker)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+c <- insurance_train %>%
+  ggplot(aes(x = capital, color = good_health, fill = good_health)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+
+a / b / c
+```
+```{r}
+# Interactions between IMC and the categorical variables:
+a <- insurance_train %>%
+  ggplot(aes(x = IMC, color = sex, fill = sex)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+b <- insurance_train %>%
+  ggplot(aes(x = IMC, color = smoker, fill = smoker)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+c <- insurance_train %>%
+  ggplot(aes(x = IMC, color = good_health, fill = good_health)) +
+  scale_x_log10() +
+  geom_density(alpha = 0.4)
+
+a / b / c
+```
+
+
+```{r}
+max_model <- glm(mortality ~ (sex + smoker + good_health + actuarial_age + capital + IMC)^2 -
+                   actuarial_age:capital - actuarial_age:IMC - capital:IMC, # no interaction between numerical
+         data = insurance_train, family = "binomial")
+summary(max_model)
+
+min_model <- glm(mortality ~ 1, data = insurance_train, family = "binomial")
+
+step_model <- stats::step(max_model,
+                          direction = "backward", 
+                          scope = list(upper = max_model, lower = min_model), 
+                          trace = 0)
+```
+# Preprocessing steps:
+
+After seeing some description of the variables, their effect on the model and their interactions, the preprocessing steps we are going to follow are:
+
+1. A method of resampling for the unbalanced class (e.g. `step_upsample(mortality)`).
+2. Convert to dummy variables all categorical since it is usually useful for the majority of models.
+3. For the numeric variables `capital` and `IMC`, we will apply the log10 for making them symmetric.
+4. Based on the AIC, we will include the interactions: sex:capital, smoker:good_health and good_health:capital
+
+Also, for some models, it is mandatory to scale and center the variables, but for the moment, we are not going to do it.
+
+
+```{r}
+set.seed(23)
+
+# Formula
+rec <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + capital + IMC, data = insurance_train)
 
 # Preprocessing steps
 rec <- rec %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_log(capital, IMC, base = 10)
+  step_log(capital, IMC, base = 10) %>%
+  step_interact(terms = ~ capital:starts_with("sex") +
+                  starts_with("smoker"):starts_with("good_health") +
+                  capital:starts_with("good_health"))
 
 # Data preprocessed
 insurance_train_prep <- rec %>%
@@ -95,15 +275,8 @@ glm_model <- logistic_reg() %>%
 glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
-```
 
-Fitting the model and description
-```{r}
 glm_fit <- fit(glm_wflow, insurance_train)
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 ```
 
 Prediction in the training set and roc curve:
@@ -132,25 +305,6 @@ prob %>%
 autoplot(pred_curve)
 ```
 
-# Using recipes
-
-Now, we will add some interaction terms
-
-```{r}
-# Formula
-rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train)
-
-# Preprocessing steps
-rec <- rec %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_log(capital, IMC, base = 10)
-
-# Adding interaction terms
-rec <- rec %>%
-  step_interact(~ )
-```
 
 
 
