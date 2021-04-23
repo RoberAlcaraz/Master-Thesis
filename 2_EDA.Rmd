@@ -86,41 +86,10 @@ We are going to split the data in 70% for training and 30% for testing
 ```{r}
 set.seed(123)
 
-
-insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
-
-insurance_train <- training(insurance_split)
-insurance_test  <- testing(insurance_split)
+# insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
+# insurance_train <- training(insurance_split)
+# insurance_test  <- testing(insurance_split)
 ```
-
-Now, doing a simple model we can see that it is not useful:
-```{r}
-rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp +
-           duration + capital + IMC, data = insurance_train)
-
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-glm_wflow <- workflow() %>%
-  add_recipe(rec) %>%
-  add_model(glm_model)
-
-glm_fit <- fit(glm_wflow, insurance_train)
-pred <- predict(glm_fit, insurance_test)
-
-pred <- pred %>%
-  mutate(mortality = insurance_test$mortality)
-pred %>%
-  conf_mat(truth = mortality,
-           estimate = .pred_class)
-
-#           Truth
-# Prediction     no    yes
-#        no  113279     66
-#        yes      0      0
-```
-
 
 ## Categorical variables (10 + 1)
 
@@ -138,25 +107,25 @@ pred %>%
 ### Period
 
 ```{r}
-table(insurance_train$period)/nrow(insurance_train)
+table(insurance$period)/nrow(insurance)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = period)) +
   geom_bar() 
 
-tab <- table(insurance_train$period, insurance_train$mortality)
+tab <- table(insurance$period, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ```
 
 ### Cover
 ```{r}
-table(insurance_train$cover)/nrow(insurance_train)
+table(insurance$cover)/nrow(insurance)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = cover)) +
   geom_bar() 
 
-tab <- table(insurance_train$cover, insurance_train$mortality)
+tab <- table(insurance$cover, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # as we increase the number of coverages, the proportion increases
@@ -164,69 +133,69 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 ### sex
 ```{r}
-table(insurance_train$sex)/nrow(insurance_train)
+table(insurance$sex)/nrow(insurance)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = sex)) +
   geom_bar() 
 
-tab <- table(insurance_train$sex, insurance_train$mortality)
+tab <- table(insurance$sex, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-# almost double in men
+# more than double in men
 ```
 
 ### smoker
 ```{r}
-table(insurance_train$smoker)/nrow(insurance_train)
+table(insurance$smoker)/nrow(insurance)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = smoker)) +
   geom_bar() 
 
-tab <- table(insurance_train$smoker, insurance_train$mortality)
+tab <- table(insurance$smoker, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-# almost double in smokers
+# double in smokers
 ```
 
 ### good_health 
 ```{r}
-table(insurance_train$good_health)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$good_health)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = good_health)) +
   geom_bar() 
-tab <- table(insurance_train$good_health, insurance_train$mortality)
+tab <- table(insurance$good_health, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-# slightly higher for the people without good health
+# slightly higher for the people with good health
 ```
 
 ### capital_DESC
 ```{r}
-table(insurance_train$capital_factor_1)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$capital_factor_1)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = capital_factor_1)) +
   geom_bar() 
 
-tab <- table(insurance_train$capital_factor_1, insurance_train$mortality)
+tab <- table(insurance$capital_factor_1, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # since we have many cateogories, we should think about encoding it.
 
 
-table(insurance_train$capital_factor_2)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$capital_factor_2)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = capital_factor_2)) +
   geom_bar() 
-tab <- table(insurance_train$capital_factor_2, insurance_train$mortality)
+tab <- table(insurance$capital_factor_2, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # we should convert it to dummy. Lower proportion of mortalitys in the last group
 
-table(insurance_train$capital_factor_3)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$capital_factor_3)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = capital_factor_3)) +
   geom_bar() 
-tab <- table(insurance_train$capital_factor_3, insurance_train$mortality)
+tab <- table(insurance$capital_factor_3, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # convert it to dummy
 ```
@@ -234,20 +203,20 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ### IMC_DESC
 
 ```{r}
-table(insurance_train$IMC_factor_1)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$IMC_factor_1)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = IMC_factor_1)) +
   geom_bar() 
 
-tab <- table(insurance_train$IMC_factor_1, insurance_train$mortality)
+tab <- table(insurance$IMC_factor_1, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-table(insurance_train$IMC_factor_2)/nrow(insurance_train)
-insurance_train %>%
+table(insurance$IMC_factor_2)/nrow(insurance)
+insurance %>%
   ggplot(aes(x = IMC_factor_2)) +
   geom_bar() 
 
-tab <- table(insurance_train$IMC_factor_2, insurance_train$mortality)
+tab <- table(insurance$IMC_factor_2, insurance$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # the two of them are very similar. Double in people with risk/overweight
@@ -266,14 +235,14 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 ### actuarial and suscription age
 ```{r}
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = actuarial_age)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 # seems good
 
 # sus_age
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = sus_age)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
@@ -282,8 +251,8 @@ insurance_train %>%
 ### exp
 
 ```{r}
-table(ifelse(insurance_train$exp == 1, "=1", "<1"))/nrow(insurance_train)
-insurance_train %>%
+table(ifelse(insurance$exp == 1, "=1", "<1"))/nrow(insurance)
+insurance %>%
   ggplot(aes(x = exp)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666")
@@ -291,29 +260,29 @@ insurance_train %>%
 
 ### duration
 ```{r}
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = duration)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 
 # duration_cat
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = duration_cat)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 ```
 ### Capital
 ```{r}
-summary(insurance_train$capital)
-insurance_train %>%
+summary(insurance$capital)
+insurance %>%
   ggplot(aes(x = capital)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 
-insurance_train %>%
+insurance %>%
   filter(capital > 2000000)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = capital)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") +
@@ -324,14 +293,14 @@ insurance_train %>%
 
 ### IMC
 ```{r}
-summary(insurance_train$IMC)
+summary(insurance$IMC)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = IMC)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") 
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = IMC)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666") +
@@ -341,12 +310,12 @@ insurance_train %>%
 ```
 
 ```{r}
-names(insurance_train)
+names(insurance)
 
-(a <- cor(insurance_train[, c(8, 10, 12, 14, 15)]))
+(a <- cor(insurance[, c(8, 10, 12, 14, 18)]))
 corrplot::corrplot(a)
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = capital, y = IMC)) +
   geom_point()
 # we have no linear correlation between the numerical variables
@@ -354,26 +323,26 @@ insurance_train %>%
 
 ```{r, eval=F}
 # No kind of relationship
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = IMC, y = capital)) +
   geom_point()
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = IMC, y = actuarial_age)) +
   scale_x_log10() + 
   geom_point()
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = IMC, y = duration)) +
   scale_x_log10() + 
   geom_point()
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = actuarial_age, y = capital)) +
   scale_y_log10() + 
   geom_point()
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = duration, y = capital)) +
   scale_y_log10() + 
   geom_point()
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = actuarial_age, y = duration)) +
   geom_point()
 ```

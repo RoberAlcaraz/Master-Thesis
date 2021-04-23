@@ -43,24 +43,21 @@ insurance_lapse <- readRDS("insurance_lapse.RDS")
 
 set.seed(123)
 
-insurance_split <- initial_split(insurance, 
-                                 prop = 0.7, 
-                                 strata = mortality)
-
-insurance_train <- training(insurance_split)
-insurance_test <- testing(insurance_split)
+# insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
+# insurance_train <- training(insurance_split)
+# insurance_test <- testing(insurance_split)
 
 # Recipe
 rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + exp + duration + capital + IMC,
-         data = insurance_train)
+  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC,
+         data = insurance)
 
 # Model
 glm_model <- logistic_reg() %>%
   set_engine("glm")
 
 # Workflow
-glm_workflow <- workflow() %>%
+glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
 ```
@@ -77,35 +74,22 @@ In this step of the project, we will analyze the following things:
 First of all, before doing any interaction between all the variables, we will fit a simple logistic regression model to see which variables have an effect on the outcome and which does not, removing those whose p-value is greater than 0.2.
 
 ```{r}
-# Recipe
-rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC,
-         data = insurance_train)
-
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-glm_fit <- fit(glm_wflow, insurance_train)
+glm_fit <- fit(glm_wflow, insurance)
 tidy(glm_fit) %>% 
-  filter(p.value > 0.2) %>%
+  # filter(p.value > 0.2) %>%
   dwplot(dot_args = list(size = 2, color = "black"),
          whisker_args = list(color = "black"),
          vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 
 
 ## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
-glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train, family = "binomial")
+glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance, family = "binomial")
 
 drop1(glm_drop, test = "LRT")
 drop1(update(glm_drop, as.formula(paste(".~.- cover"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- cover - duration"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- cover - duration - period"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC - capital"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC - capital - period"))), test = "LRT")
 ```
 
 Therefore, we will remove the variables cover, duration and period from our model, and we could create an inferential model to explain better the mortality in terms of the predictors
@@ -115,7 +99,8 @@ Therefore, we will remove the variables cover, duration and period from our mode
 set.seed(23)
 # Recipe
 rec <- 
-  recipe(mortality ~ sex + smoker + good_health + actuarial_age + capital + IMC, data = insurance_train) %>%
+  recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration, 
+         data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01)
 
 # Model
@@ -127,7 +112,7 @@ glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
 
-glm_fit <- fit(glm_wflow, insurance_train)
+glm_fit <- fit(glm_wflow, insurance)
 tidy(glm_fit) %>% 
   dwplot(dot_args = list(size = 2, color = "black"),
          whisker_args = list(color = "black"),
@@ -140,7 +125,52 @@ tidy(glm_fit) %>%
   select(term, odds_ratio)
 ```
 
-For instance, we can observe that if you were a woman, the odds of mortality are 0.64 times lower than if you were a man. However, this model is saying that if you had good health, the odds of mortality are 2.26 times bigger than if you had a bad health, which does not make much sense.
+For instance, we can observe that if you were a woman, the odds of mortality are 0.48 times lower than if you were a man. However, this model is saying that if you had good health, the odds of mortality are 1.68 times bigger than if you had a bad health, which does not make much sense.
+
+Now, if we change the variables `IMC` and `capital` for their transformed variables, we can see if our inferential model could explain better.
+
+```{r}
+## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
+glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital_factor_2 + IMC_factor_1, data = insurance, family = "binomial")
+
+drop1(glm_drop, test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2 - cover"))), test = "LRT")
+drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2 - cover - period"))), test = "LRT")
+```
+
+```{r}
+set.seed(23)
+# Recipe
+rec <- 
+  recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_1,
+         data = insurance) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01)
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, insurance)
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+
+tidy(glm_fit) %>%
+  mutate(
+    odds_ratio = exp(estimate)
+  ) %>%
+  select(term, odds_ratio) %>%
+  ggplot(aes(x = odds_ratio, y = term)) +
+  geom_point(size = 2) + geom_vline(xintercept = 1, )
+```
+
 
 
 # Interaction terms
@@ -149,34 +179,34 @@ Now, our model is going to be formed by the variables sex, smoker, good_health, 
 
 ```{r}
 # Interactions between the categorical variables:
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = sex, fill = smoker)) +
   geom_bar()
-tab <- table(insurance_train$sex, insurance_train$smoker)*100/nrow(insurance_train)
+tab <- table(insurance$sex, insurance$smoker)*100/nrow(insurance)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = sex, fill = good_health)) +
   geom_bar()
-tab <- table(insurance_train$sex, insurance_train$good_health)*100/nrow(insurance_train)
+tab <- table(insurance$sex, insurance$good_health)*100/nrow(insurance)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
-insurance_train %>%
+insurance %>%
   ggplot(aes(x = smoker, fill = good_health)) +
   geom_bar()
-tab <- table(insurance_train$smoker, insurance_train$good_health)*100/nrow(insurance_train)
+tab <- table(insurance$smoker, insurance$good_health)*100/nrow(insurance)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 ```
 
 ```{r}
 # Interactions between actuarial_age and the categorical variables:
-a <- insurance_train %>%
+a <- insurance %>%
   ggplot(aes(x = actuarial_age, color = sex, fill = sex)) +
   geom_density(alpha = 0.4)
-b <- insurance_train %>%
+b <- insurance %>%
   ggplot(aes(x = actuarial_age, color = smoker, fill = smoker)) +
   geom_density(alpha = 0.4)
-c <- insurance_train %>%
+c <- insurance %>%
   ggplot(aes(x = actuarial_age, color = good_health, fill = good_health)) +
   geom_density(alpha = 0.4)
 
@@ -185,15 +215,15 @@ a / b / c
 
 ```{r}
 # Interactions between capital and the categorical variables:
-a <- insurance_train %>%
+a <- insurance %>%
   ggplot(aes(x = capital, color = sex, fill = sex)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
-b <- insurance_train %>%
+b <- insurance %>%
   ggplot(aes(x = capital, color = smoker, fill = smoker)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
-c <- insurance_train %>%
+c <- insurance %>%
   ggplot(aes(x = capital, color = good_health, fill = good_health)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
@@ -202,15 +232,15 @@ a / b / c
 ```
 ```{r}
 # Interactions between IMC and the categorical variables:
-a <- insurance_train %>%
+a <- insurance %>%
   ggplot(aes(x = IMC, color = sex, fill = sex)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
-b <- insurance_train %>%
+b <- insurance %>%
   ggplot(aes(x = IMC, color = smoker, fill = smoker)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
-c <- insurance_train %>%
+c <- insurance %>%
   ggplot(aes(x = IMC, color = good_health, fill = good_health)) +
   scale_x_log10() +
   geom_density(alpha = 0.4)
@@ -222,10 +252,10 @@ a / b / c
 ```{r}
 max_model <- glm(mortality ~ (sex + smoker + good_health + actuarial_age + capital + IMC)^2 -
                    actuarial_age:capital - actuarial_age:IMC - capital:IMC, # no interaction between numerical
-         data = insurance_train, family = "binomial")
+         data = insurance, family = "binomial")
 summary(max_model)
 
-min_model <- glm(mortality ~ 1, data = insurance_train, family = "binomial")
+min_model <- glm(mortality ~ 1, data = insurance, family = "binomial")
 
 step_model <- stats::step(max_model,
                           direction = "backward", 
@@ -248,7 +278,7 @@ Also, for some models, it is mandatory to scale and center the variables, but fo
 set.seed(23)
 
 # Formula
-rec <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + capital + IMC, data = insurance_train)
+rec <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + capital + IMC, data = insurance)
 
 # Preprocessing steps
 rec <- rec %>%
@@ -260,11 +290,11 @@ rec <- rec %>%
                   capital:starts_with("good_health"))
 
 # Data preprocessed
-insurance_train_prep <- rec %>%
+insurance_prep <- rec %>%
   prep() %>%
   bake(new_data = NULL)
 
-summary(insurance_train_prep$mortality)
+summary(insurance_prep$mortality)
 ```
 
 Model and workflow:
@@ -276,16 +306,16 @@ glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
 
-glm_fit <- fit(glm_wflow, insurance_train)
+glm_fit <- fit(glm_wflow, insurance)
 ```
 
 Prediction in the training set and roc curve:
 ```{r}
-pred <- predict(glm_fit, insurance_train)
-prob <- predict(glm_fit, insurance_train, type = "prob")
+pred <- predict(glm_fit, insurance)
+prob <- predict(glm_fit, insurance, type = "prob")
 
 pred <- pred %>%
-  mutate(mortality = insurance_train$mortality)
+  mutate(mortality = insurance$mortality)
 
 pred %>%
   conf_mat(truth = mortality,
@@ -297,7 +327,7 @@ pred %>%
   summary()
 
 prob <- prob %>%
-  mutate(mortality = insurance_train$mortality)
+  mutate(mortality = insurance$mortality)
 pred_curve <- prob %>%
   roc_curve(mortality, .pred_yes, event_level = "second")
 prob %>%
