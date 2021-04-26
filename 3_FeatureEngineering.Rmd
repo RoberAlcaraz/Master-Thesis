@@ -426,6 +426,36 @@ tidy(glm_fit) %>%
          vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 ```
 
+Removing good_health:
+```{r}
+set.seed(23)
+
+# Formula
+rec <- recipe(mortality ~ sex + smoker + actuarial_age + duration + IMC_factor_1,
+              data = insurance)
+
+# Preprocessing steps
+rec <- rec %>%
+  themis::step_upsample(mortality, over_ratio = 0.01) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ duration:starts_with("sex"))
+
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, insurance)
+
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+
 Prediction in the training set and roc curve:
 ```{r}
 pred <- predict(glm_fit, insurance)
