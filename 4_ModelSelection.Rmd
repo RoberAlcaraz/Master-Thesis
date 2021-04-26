@@ -31,12 +31,12 @@ pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR,
 theme_set(theme_bw())
 
 # Models packages
-pacman::p_load(ranger)
+pacman::p_load(ranger, baguette)
 ```
 
 ## Code
 
-```{r}
+```{r, eval = T}
 insurance <- readRDS("insurance.RDS")
 
 set.seed(23)
@@ -54,47 +54,46 @@ glm_wflow <- workflow() %>%
 To start, we are going to compare multiple models with different features or preprocessing methods but the model for all of them is going to be the same: glm
 
 ```{r}
-keep_pred <- control_resamples(save_pred = TRUE, 
-                               save_workflow = TRUE)
+keep_pred <- control_resamples(save_pred = TRUE)
 
 base <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors()) %>%
   step_log(capital, IMC, base = 10)
 
 base_1 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors()) %>%
   step_log(capital, IMC, base = 10)
 
 base_2 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + capital, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors()) %>%
   step_log(capital, base = 10)
 
 base_3 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes()) 
+  step_dummy(all_nominal_predictors()) 
 
 base_4 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal_predictors())
 
 cat <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital_factor_2 + IMC_factor_2, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal_predictors())
 
 cat_1 <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal_predictors())
 
 cat_2 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal_predictors())
 
 cat_3 <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal_predictors())
 
 set_predictors <- list(
   # original
@@ -113,7 +112,20 @@ glm_models <- workflow_set(set_predictors, list(glm = glm_model), cross = F)
 glm_models
 ```
 
-```{r}
+```{r, eval=F}
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+# fit here
+
+stopCluster(cl)
+```
+
+
+```{r, eval = F}
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
 glm_models <- 
   glm_models %>% 
   workflow_map("fit_resamples", 
@@ -123,7 +135,26 @@ glm_models <-
                resamples = insurance_folds, control = keep_pred,
                metrics = metric_set(roc_auc, kap))
 
+stopCluster(cl)
 
+# i 1 of 9 resampling: base_glm
+# v 1 of 9 resampling: base_glm (38.2s)
+# i 2 of 9 resampling: base_1_glm
+# v 2 of 9 resampling: base_1_glm (16.4s)
+# i 3 of 9 resampling: base_2_glm
+# v 3 of 9 resampling: base_2_glm (13.1s)
+# i 4 of 9 resampling: base_3_glm
+# v 4 of 9 resampling: base_3_glm (11.3s)
+# i 5 of 9 resampling: base_4_glm
+# v 5 of 9 resampling: base_4_glm (11s)
+# i 6 of 9 resampling: cat_glm
+# v 6 of 9 resampling: cat_glm (12.6s)
+# i 7 of 9 resampling: cat_1_glm
+# v 7 of 9 resampling: cat_1_glm (14.1s)
+# i 8 of 9 resampling: cat_2_glm
+# v 8 of 9 resampling: cat_2_glm (11.1s)
+# i 9 of 9 resampling: cat_3_glm
+# v 9 of 9 resampling: cat_3_glm (10.4s)
 
 # i 1 of 9 resampling: base_glm
 # v 1 of 9 resampling: base_glm (41.4s)
@@ -146,7 +177,20 @@ glm_models <-
 ```
 
 ```{r}
-collect_metrics(glm_models)
+saveRDS(glm_models, "glm_models.RDS")
+```
+
+```{r}
+collect_metrics(glm_models, summarize = T)
+
+
+best_glm_model <- glm_models %>% 
+  pull_workflow_set_result("base_3_glm") 
+
+predictions <- collect_predictions(best_glm_model)
+
+predictions %>%
+  conf_mat(truth = mortality, estimate = .pred_class)
 ```
 
 ```{r}
@@ -156,113 +200,40 @@ autoplot(glm_models, metric = "roc_auc")
 
 # Machine learning
 
-```{r}
-use_xgboost(
-  formula = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, 
-  data = insurance, 
-  verbose = T, 
-  tune = T, 
-  colors = T
-)
-```
 
 ```{r}
-use_kknn(
-  formula = mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, 
-  data = insurance, 
-  verbose = T, 
-  tune = T, 
-  colors = T
-)
-```
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
 
-```{r}
-kknn_recipe <- 
+tree_rpart_recipe <- 
   recipe(formula = mortality ~ period + cover + sex + smoker + good_health + 
-    actuarial_age + duration + capital + IMC, data = insurance) %>% 
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_novel(all_nominal_predictors()) %>% 
-  ## This model requires the predictors to be numeric. The most common 
-  ## method to convert qualitative predictors to numeric is to create 
-  ## binary indicator variables (aka dummy variables) from these 
-  ## predictors. 
-  step_dummy(all_nominal_predictors()) %>% 
-  ## Since distance calculations are used, the predictor variables should 
-  ## be on the same scale. Before centering and scaling the numeric 
-  ## predictors, any predictors with a single unique value are filtered 
-  ## out. 
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) 
+    actuarial_age + duration + capital + IMC, data = insurance) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01)
 
-kknn_spec <- 
-  nearest_neighbor(neighbors = tune(), weight_func = "rectangular") %>% 
-  set_mode("classification") %>% 
-  set_engine("kknn") 
-
-kknn_workflow <- 
-  workflow() %>% 
-  add_recipe(kknn_recipe) %>% 
-  add_model(kknn_spec) 
-
-set.seed(77980)
-kknn_tune <-
-  tune_grid(kknn_workflow, 
-            resamples = insurance_folds,
-            grid = 3)
-```
-
-
-
-```{r}
-xgboost_recipe <- 
-  recipe(formula = mortality ~ period + cover + sex + smoker + good_health + 
-    actuarial_age + duration + capital + IMC, data = insurance) %>% 
-  step_novel(all_nominal_predictors()) %>% 
-  ## This model requires the predictors to be numeric. The most common 
-  ## method to convert qualitative predictors to numeric is to create 
-  ## binary indicator variables (aka dummy variables) from these 
-  ## predictors. However, for this model, binary indicator variables can be 
-  ## made for each of the levels of the factors (known as 'one-hot 
-  ## encoding'). 
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
-  step_zv(all_predictors()) 
-
-xgboost_spec <- 
-  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
-    loss_reduction = tune(), sample_size = tune()) %>% 
-  set_mode("classification") %>% 
-  set_engine("xgboost") 
-
-xgboost_workflow <- 
-  workflow() %>% 
-  add_recipe(xgboost_recipe) %>% 
-  add_model(xgboost_spec) 
-
-set.seed(56931)
-xgboost_tune <-
-  xgboost_workflow %>%
-  tune_grid(resamples = insurance_folds, 
-            grid = 2, 
-            metrics = metric_set(roc_auc))
-```
-
-
-
-
-```{r}
-parsnip_addin()
-
-
-
-decision_tree_rpart_spec <-
-  decision_tree(tree_depth = tune(), min_n = tune(), cost_complexity = tune()) %>%
+tree_rpart_spec <-
+  baguette::bag_tree() %>%
   set_engine('rpart') %>%
   set_mode('classification')
 
-logistic_reg_glmnet_spec <-
-  logistic_reg(penalty = tune(), mixture = tune()) %>%
-  set_engine('glmnet')
+tree_rpart_wflow <- 
+  workflow() %>% 
+  add_recipe(tree_rpart_recipe) %>% 
+  add_model(tree_rpart_spec) 
 
+set.seed(56931)
+tree_rpart_tune <-
+  tree_rpart_wflow %>%
+  fit_resamples(resamples = insurance_folds,
+                control = keep_pred, 
+                metrics = metric_set(roc_auc, kap))
+
+stopCluster(cl)
+
+collect_metrics(tree_rpart_tune)
+predictions <- collect_predictions(tree_rpart_tune)
+
+predictions %>%
+  conf_mat(truth = mortality, estimate = .pred_class)
 ```
 
 
