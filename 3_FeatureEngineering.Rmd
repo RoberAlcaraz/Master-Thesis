@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv)
 theme_set(theme_bw())
 
 # Models packages
@@ -39,6 +39,15 @@ pacman::p_load(ranger)
 insurance <- readRDS("insurance.RDS")
 insurance_mortality <- readRDS("insurance_mortality.RDS")
 insurance_lapse <- readRDS("insurance_lapse.RDS")
+```
+
+```{r}
+gam_model <- gam(mortality ~ period + cover + sex + smoker + good_health +
+                   actuarial_age + s(duration) + s(capital) + s(IMC),
+                 data = insurance, family = "binomial")
+
+summary(gam_model)
+plot(gam_model)
 ```
 
 
