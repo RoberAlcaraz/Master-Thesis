@@ -34,7 +34,7 @@ pacman::p_load(tidyverse, tidymodels)
 # insurance <- read.table("BBDD_DEFINITIVA_V4.txt", header = T)
 # saveRDS(insurance, "BBDD_DEFINITIVA_V4.RDS")
 
-insurance <- readRDS("BBDD_DEFINITIVA_V4.RDS")
+insurance <- readRDS("../0_data/BBDD_DEFINITIVA_V4.RDS")
 ```
 
 - CLAVE: Identification of the person
@@ -180,12 +180,10 @@ insurance_lapse
 ```
 
 ```{r}
-# saveRDS(insurance, file = "insurance.RDS")
-# saveRDS(insurance_mortality, file = "insurance_mortality.RDS")
+# saveRDS(insurance, file = "../0_data/insurance.RDS")
 # saveRDS(insurance_lapse, file = "insurance_lapse.RDS")
 
-insurance <- readRDS("insurance.RDS")
-insurance_mortality <- readRDS("insurance_mortality.RDS")
-insurance_lapse <- readRDS("insurance_lapse.RDS")
+insurance <- readRDS("../0_data/insurance.RDS")
+insurance_lapse <- readRDS("../0_data/insurance_lapse.RDS")
 ```
 

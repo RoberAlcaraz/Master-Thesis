@@ -37,7 +37,7 @@ pacman::p_load(ranger, baguette)
 ## Code
 
 ```{r, eval = T}
-insurance <- readRDS("insurance.RDS")
+insurance <- readRDS("../0_data/insurance.RDS")
 
 set.seed(23)
 insurance_folds <- vfold_cv(insurance, v = 3, strata = mortality)
