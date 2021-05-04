@@ -1,5 +1,5 @@
 ---
-title: '**TFM: Exploratory Data Analysis (EDA)**'
+title: '**Mortality: Exploratory Data Analysis (EDA)**'
 author: '*Roberto Jesús Alcaraz Molina*'
 date: "14/04/2021"
 output:
@@ -317,30 +317,4 @@ insurance_train %>%
   ggplot(aes(x = capital, y = IMC)) +
   geom_point()
 # we have no linear correlation between the numerical variables
-```
-
-```{r, eval=F}
-# No kind of relationship
-insurance_train %>%
-  ggplot(aes(x = IMC, y = capital)) +
-  geom_point()
-insurance_train %>%
-  ggplot(aes(x = IMC, y = actuarial_age)) +
-  scale_x_log10() + 
-  geom_point()
-insurance_train %>%
-  ggplot(aes(x = IMC, y = duration)) +
-  scale_x_log10() + 
-  geom_point()
-insurance_train %>%
-  ggplot(aes(x = actuarial_age, y = capital)) +
-  scale_y_log10() + 
-  geom_point()
-insurance_train %>%
-  ggplot(aes(x = duration, y = capital)) +
-  scale_y_log10() + 
-  geom_point()
-insurance_train %>%
-  ggplot(aes(x = actuarial_age, y = duration)) +
-  geom_point()
 ```
