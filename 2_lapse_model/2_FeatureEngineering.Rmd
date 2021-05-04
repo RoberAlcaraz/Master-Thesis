@@ -1,0 +1,516 @@
+---
+title: '**Lapse: Feature Engineering**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "04/05/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    df_print: paged
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = T, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+# devtools::install_github("stevenpawley/recipeselectors")
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip)
+theme_set(theme_bw())
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+```{r}
+lapse_data <- readRDS("0_data/insurance_lapse.RDS")
+lapse_data$lapse <- as.factor(lapse_data$lapse)
+```
+
+```{r}
+set.seed(123)
+
+lapse_split <- initial_split(lapse_data, prop = 0.7, strata = lapse)
+lapse_train <- training(lapse_split)
+lapse_test  <- testing(lapse_split)
+```
+
+In this step of the project, we will analyze the following things:
+
+  - Variable selection through gam, drop (p-value > 0.2) and random forest.
+  - Interaction between variables.
+  - Preprocessing steps taking into account the EDA.
+  
+
+# Variable selection
+
+## GAM models
+
+```{r}
+gam_model <- gam(lapse ~ period + cover + sex + smoker + good_health +
+                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
+                 data = lapse_train, family = "binomial")
+
+# Parametric coefficients:
+#                Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)    -1.62112    0.04886 -33.179   <2e-16 ***
+# period2011      0.01432    0.01274   1.123   0.2613    
+# period2012      0.73408    0.01230  59.663   <2e-16 ***
+# cover2         -0.05201    0.02261  -2.300   0.0215 *  
+# cover3         -0.02099    0.01781  -1.178   0.2386    
+# sexwoman       -0.14673    0.01227 -11.955   <2e-16 ***
+# smokeryes       0.11472    0.01373   8.358   <2e-16 ***
+# good_healthyes -0.03360    0.04912  -0.684   0.4939    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                    edf Ref.df   Chi.sq  p-value    
+# s(actuarial_age) 8.446  8.858   383.14  < 2e-16 ***
+# s(duration)      8.969  8.999 27571.25  < 2e-16 ***
+# s(capital)       7.230  8.188   141.56  < 2e-16 ***
+# s(IMC)           4.657  5.669    40.29 2.22e-06 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# R-sq.(adj) =  0.185   Deviance explained = 13.3%
+# UBRE = -0.074842  Scale est. = 1         n = 264127
+
+gam_model <- gam(lapse ~ period + cover + sex + smoker +
+                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
+                 data = lapse_train, family = "binomial")
+
+plot(gam_model)
+
+# Parametric coefficients:
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -1.65361    0.01106 -149.530   <2e-16 ***
+# period2011   0.01427    0.01274    1.119   0.2630    
+# period2012   0.73399    0.01230   59.659   <2e-16 ***
+# cover2      -0.05196    0.02261   -2.298   0.0216 *  
+# cover3      -0.02096    0.01781   -1.177   0.2393    
+# sexwoman    -0.14713    0.01226  -11.997   <2e-16 ***
+# smokeryes    0.11476    0.01373    8.361   <2e-16 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                    edf Ref.df   Chi.sq p-value    
+# s(actuarial_age) 8.447  8.858   383.08  <2e-16 ***
+# s(duration)      8.969  8.999 27653.30  <2e-16 ***
+# s(capital)       7.229  8.187   141.37  <2e-16 ***
+# s(IMC)           4.645  5.642    49.06  <2e-16 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# R-sq.(adj) =  0.185   Deviance explained = 13.3%
+# UBRE = -0.074846  Scale est. = 1         n = 264127
+```
+
+## Drop (p-value > 0.2)
+
+First of all, before doing any interaction between all the variables, we will fit a simple logistic regression model to see which variables have an effect on the outcome and which does not, removing those whose p-value is greater than 0.2.
+
+
+```{r, eval=F}
+## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
+glm_drop <- glm(lapse ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = lapse_train, family = "binomial")
+
+drop1(glm_drop, test = "LRT")
+
+# Model:
+# lapse ~ period + cover + sex + smoker + good_health + actuarial_age + 
+#     duration + capital + IMC
+#               Df Deviance    AIC     LRT  Pr(>Chi)    
+# <none>             256981 257005                      
+# period         2   262337 262357  5355.8 < 2.2e-16 ***
+# cover          2   256985 257005     3.2   0.19732    
+# sex            1   257190 257212   208.5 < 2.2e-16 ***
+# smoker         1   257013 257035    31.5 2.019e-08 ***
+# good_health    1   256988 257010     6.5   0.01064 *  
+# actuarial_age  1   256988 257010     6.3   0.01178 *  
+# duration       1   275667 275689 18685.2 < 2.2e-16 ***
+# capital        1   257074 257096    92.9 < 2.2e-16 ***
+# IMC            1   256986 257008     4.8   0.02779 *  
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+```
+
+Therefore, we will remove the variables cover, duration and period from our model, and we could create an inferential model to explain better the lapse in terms of the predictors
+
+### Inferential model
+```{r}
+rec <- 
+  recipe(lapse ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC,
+         data = lapse_train) %>%
+  step_dummy(all_nominal_predictors())
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+# Fit
+glm_fit <- fit(glm_wflow, lapse_train)
+tidy(glm_fit) %>% 
+  # filter(p.value > 0.2) %>%
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+
+## Recursive feature selection with Random Forest
+
+```{r}
+select_rec <- 
+  recipe(lapse ~ period + cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + IMC,
+         data = lapse_train)
+
+vip_model <- rand_forest() %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification") %>%
+  fit(lapse ~ ., data = select_rec %>% prep() %>% juice)
+
+
+vip(vip_model)
+```
+
+
+```{r}
+rfe_model <- rand_forest() %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification")
+
+# Predictive model for the deaths
+set.seed(1234)
+select_rec <- 
+  recipe(lapse ~ period + cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + IMC,
+         data = lapse_train) %>%
+  step_select_vip(all_predictors(), outcome = "lapse", model = rfe_model, threshold = 0.5)
+
+new_data <- select_rec %>% prep() %>% juice()
+new_data
+```
+
+
+# Interaction terms
+
+```{r}
+lapse_train_yes <- lapse_train %>%
+  filter(lapse == "yes")
+
+lapse_train_no <- lapse_train %>%
+  filter(lapse == "no")
+
+period + cover + sex + smoker
+```
+
+```{r}
+# Interactions between the categorical variables:
+## Period and cover NO
+lapse_train %>%
+  ggplot(aes(x = period, fill = cover)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$period, lapse_train_no$cover)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$period, lapse_train_yes$cover)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+## Period and sex YES
+lapse_train %>%
+  ggplot(aes(x = period, fill = sex)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$period, lapse_train_no$sex)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$period, lapse_train_yes$sex)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+## Period and smoker YES
+lapse_train %>%
+  ggplot(aes(x = period, fill = smoker)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$period, lapse_train_no$smoker)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$period, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# Sex and smoker YES
+lapse_train %>%
+  ggplot(aes(x = sex, fill = smoker)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$sex, lapse_train_no$smoker)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$sex, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# cover and sex
+lapse_train %>%
+  ggplot(aes(x = cover, fill = sex)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$cover, lapse_train_no$sex)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$cover, lapse_train_yes$sex)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# cover and smoker
+lapse_train %>%
+  ggplot(aes(x = cover, fill = smoker)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$cover, lapse_train_no$smoker)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$cover, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# Sex and smoker
+lapse_train %>%
+  ggplot(aes(x = sex, fill = smoker)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~lapse) 
+
+print("LAPSE: NO")
+tab <- table(lapse_train_no$sex, lapse_train_no$smoker)*100/nrow(lapse_train_no)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+print("LAPSE: YES")
+tab <- table(lapse_train_yes$sex, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+```
+
+```{r}
+# Interactions between actuarial_age and the categorical variables:
+a <- lapse_train %>%
+  ggplot(aes(x = actuarial_age, color = sex, fill = sex)) +
+  geom_density(alpha = 0.4)
+b <- lapse_train %>%
+  ggplot(aes(x = actuarial_age, color = smoker, fill = smoker)) +
+  geom_density(alpha = 0.4)
+c <- lapse_train %>%
+  ggplot(aes(x = actuarial_age, color = good_health, fill = good_health)) +
+  geom_density(alpha = 0.4)
+d <- lapse_train %>%
+  ggplot(aes(x = actuarial_age, color = IMC_factor_1, fill = IMC_factor_1)) +
+  geom_density(alpha = 0.4)
+
+a / b / c / d
+```
+
+```{r}
+# Interactions between duration and the categorical variables:
+a <- lapse_train %>%
+  ggplot(aes(x = duration, color = sex, fill = sex)) +
+  geom_density(alpha = 0.4)
+b <- lapse_train %>%
+  ggplot(aes(x = duration, color = smoker, fill = smoker)) +
+  geom_density(alpha = 0.4)
+c <- lapse_train %>%
+  ggplot(aes(x = duration, color = good_health, fill = good_health)) +
+  geom_density(alpha = 0.4)
+d <- lapse_train %>%
+  ggplot(aes(x = duration, color = IMC_factor_1, fill = IMC_factor_1)) +
+  geom_density(alpha = 0.4)
+
+a / b / c / d
+```
+
+
+```{r, eval=F}
+max_model <- glm(lapse ~ (sex + smoker + good_health + actuarial_age + duration + IMC_factor_1)^2 - actuarial_age:duration, # no interaction between numerical
+                 data = lapse_train, 
+                 family = "binomial")
+
+min_model <- glm(lapse ~ 1, data = lapse_train, family = "binomial")
+
+step_model <- stats::step(max_model,
+                          direction = "backward", 
+                          scope = list(upper = max_model, lower = min_model), 
+                          trace = 0)
+summary(step_model)
+
+# Call:
+# glm(formula = lapse ~ sex + smoker + good_health + actuarial_age + 
+#     duration + IMC_factor_1 + sex:duration, family = "binomial", 
+#     data = lapse_train)
+# 
+# Deviance Residuals: 
+#     Min       1Q   Median       3Q      Max  
+# -0.1909  -0.0416  -0.0283  -0.0192   4.3973  
+# 
+# Coefficients:
+#                     Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)       -12.206161   0.543400 -22.463  < 2e-16 ***
+# sexwoman           -0.964857   0.269777  -3.577 0.000348 ***
+# smokeryes           0.561524   0.137516   4.083 4.44e-05 ***
+# good_healthyes      0.604104   0.388776   1.554 0.120217    
+# actuarial_age       0.101119   0.007618  13.274  < 2e-16 ***
+# duration           -0.050428   0.020340  -2.479 0.013166 *  
+# IMC_factor_1risk    0.225319   0.132219   1.704 0.088356 .  
+# sexwoman:duration   0.068035   0.041226   1.650 0.098885 .  
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# (Dispersion parameter for binomial family taken to be 1)
+# 
+#     Null deviance: 4335.3  on 377817  degrees of freedom
+# Residual deviance: 4069.7  on 377810  degrees of freedom
+# AIC: 4085.7
+# 
+# Number of Fisher Scoring iterations: 11
+```
+# Preprocessing steps:
+
+After seeing some description of the variables, their effect on the model and their interactions, the preprocessing steps we are going to follow are:
+
+1. A method of resampling for the unbalanced class (e.g. `step_upsample(lapse)`).
+
+2. Convert to dummy variables all categorical since it is usually useful for the majority of models.
+
+3. For the numeric variables `capital` and `IMC`, we will apply the log10 for making them symmetric.
+
+4. Based on the AIC, we will include the interaction sex:duration.
+
+Also, for some models, it is mandatory to scale and center the variables, but for the moment, we are not going to do it.
+
+
+```{r}
+set.seed(23)
+
+# Formula
+rec <- recipe(lapse ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_1,
+              data = lapse_train)
+
+# Preprocessing steps
+rec <- rec %>%
+  
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ duration:starts_with("sex"))
+
+# Data preprocessed
+lapse_train_prep <- rec %>%
+  prep() %>%
+  bake(new_data = NULL)
+
+summary(lapse_train_prep$lapse)
+```
+
+Model and workflow:
+```{r}
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, lapse_train)
+
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+Removing good_health:
+```{r}
+set.seed(23)
+
+# Formula
+rec <- recipe(lapse ~ sex + smoker + actuarial_age + duration + IMC_factor_1,
+              data = lapse_train)
+
+# Preprocessing steps
+rec <- rec %>%
+  
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ duration:starts_with("sex"))
+
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, lapse_train)
+
+tidy(glm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+
+Prediction in the training set and roc curve:
+```{r}
+pred <- predict(glm_fit, lapse_train)
+prob <- predict(glm_fit, lapse_train, type = "prob")
+
+pred <- pred %>%
+  mutate(lapse = lapse_train$lapse)
+
+pred %>%
+  conf_mat(truth = lapse,
+           estimate = .pred_class)
+
+pred %>%
+  conf_mat(truth = lapse,
+           estimate = .pred_class) %>%
+  summary()
+
+prob <- prob %>%
+  mutate(lapse = lapse_train$lapse)
+pred_curve <- prob %>%
+  roc_curve(lapse, .pred_yes, event_level = "second")
+prob %>%
+  roc_auc(lapse, .pred_no)
+autoplot(pred_curve)
+```
+
+
+
+
+
+

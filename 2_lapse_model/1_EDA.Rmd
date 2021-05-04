@@ -1,0 +1,333 @@
+---
+title: '**Lapse: Exploratory Data Analysis (EDA)**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "04/05/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    df_print: paged
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = T, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+pacman::p_load(tidyverse, tidymodels, workflows, tune, patchwork, FactoMineR, dotwhisker, splines)
+theme_set(theme_bw())
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+```{r}
+lapse_data <- readRDS("0_data/insurance_lapse.RDS")
+```
+
+# Description and visualization of the variables
+
+Our variables are:
+
+- **Indicative variables**:
+
+  - `ID`
+  - `key`
+
+- **Categorical variables (10 + 1)**:
+
+  - `lapse` (target)
+  - `period`
+  - `cover`
+  - `sex`
+  - `smoker`
+  - `good_health`
+  - `capital_factor_1`
+  - `capital_factor_2`
+  - `capital_factor_3`
+  - `IMC_factor_1`
+  - `IMC_factor_2`
+
+
+- **Numerical variables (7)**:
+
+  - `actuarial_age`
+  - `sus_age`
+  - `exp`
+  - `duration`
+  - `duration_cat`
+  - `capital`
+  - `IMC`
+
+## Target variable: `lapse`
+
+```{r}
+# lapse
+lapse_data$lapse <- as.factor(lapse_data$lapse)
+table(lapse_data$lapse)/nrow(lapse_data)
+```
+
+We are going to split the data in 70% for training and 30% for testing
+```{r}
+set.seed(123)
+
+lapse_split <- initial_split(lapse_data, prop = 0.7, strata = lapse)
+lapse_train <- training(lapse_split)
+lapse_test  <- testing(lapse_split)
+```
+
+## Categorical variables (10 + 1)
+
+- `period`
+- `cover`
+- `sex`
+- `smoker`
+- `good_health`
+- `capital_factor_1`
+- `capital_factor_2`
+- `capital_factor_3`
+- `IMC_factor_1`
+- `IMC_factor_2`
+
+### Period
+
+```{r}
+lapse_train %>%
+  ggplot(aes(x = period, fill = lapse)) +
+  geom_bar(position = "dodge") 
+
+tab <- table(lapse_train$period, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# In the third year the percentage increases
+```
+
+### Cover
+```{r}
+table(lapse_train$cover)/nrow(lapse_train)
+
+lapse_train %>%
+  ggplot(aes(x = cover, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$cover, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# as we increase the number of coverages, the proportion decreases
+```
+
+### sex
+```{r}
+table(lapse_train$sex)/nrow(lapse_train)
+
+lapse_train %>%
+  ggplot(aes(x = sex, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$sex, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# more or less equal, slightly higher in men
+```
+
+### smoker
+```{r}
+table(lapse_train$smoker)/nrow(lapse_train)
+
+lapse_train %>%
+  ggplot(aes(x = smoker, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$smoker, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# higher in non-smokers
+```
+
+### good_health 
+```{r}
+table(lapse_train$good_health)/nrow(lapse_train)
+lapse_train %>%
+  ggplot(aes(x = good_health, fill = lapse)) +
+  geom_bar(position = "dodge")
+tab <- table(lapse_train$good_health, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# higher for the people with good health
+```
+
+### capital_DESC
+```{r}
+table(lapse_train$capital_factor_1)/nrow(lapse_train)
+lapse_train %>%
+  ggplot(aes(x = capital_factor_1, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$capital_factor_1, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+table(lapse_train$capital_factor_2)/nrow(lapse_train)
+lapse_train %>%
+  ggplot(aes(x = capital_factor_2, fill = lapse)) +
+  geom_bar(position = "dodge")
+tab <- table(lapse_train$capital_factor_2, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+table(lapse_train$capital_factor_3)/nrow(lapse_train)
+lapse_train %>%
+  ggplot(aes(x = capital_factor_3, fill = lapse)) +
+  geom_bar(position = "dodge")
+tab <- table(lapse_train$capital_factor_3, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# Non-linear?
+```
+
+### IMC_DESC
+
+```{r}
+lapse_train %>%
+  ggplot(aes(x = IMC_factor_1, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$IMC_factor_1, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+lapse_train %>%
+  ggplot(aes(x = IMC_factor_2, fill = lapse)) +
+  geom_bar(position = "dodge")
+
+tab <- table(lapse_train$IMC_factor_2, lapse_train$lapse)
+cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
+
+# more or less the same
+```
+
+## Numerical variables (7)
+
+- `actuarial_age`
+- `sus_age`
+- `exp`
+- `duration`
+- `duration_cat`
+- `capital`
+- `IMC`
+
+
+### actuarial and suscription age
+```{r}
+lapse_train %>%
+  ggplot(aes(x = actuarial_age, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+# seems good
+
+# sus_age
+lapse_train %>%
+  ggplot(aes(x = sus_age, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+```
+
+### exp
+
+```{r}
+table(ifelse(lapse_train$exp == 1, "=1", "<1"))/nrow(lapse_train)
+lapse_train %>%
+  ggplot(aes(x = exp)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666")
+```
+
+### duration
+```{r}
+lapse_train %>%
+  ggplot(aes(x = duration, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+
+# Very significant
+
+# duration_cat
+lapse_train %>%
+  ggplot(aes(x = duration_cat, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+```
+### Capital
+```{r}
+summary(lapse_train$capital)
+lapse_train %>%
+  ggplot(aes(x = capital, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+
+lapse_train %>%
+  filter(capital > 2000000)
+
+lapse_train %>%
+  ggplot(aes(x = capital, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") +
+  scale_x_log10()
+# here we have some outliers. We should take it into account.
+```
+
+
+### IMC
+```{r}
+summary(lapse_train$IMC)
+
+lapse_train %>%
+  ggplot(aes(x = IMC, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") 
+
+lapse_train %>%
+  ggplot(aes(x = IMC, color=lapse, fill=lapse)) +
+  geom_histogram(aes(y=..density..), alpha = 0.5)+
+  geom_density(alpha=.2, fill="#FF6666") +
+  scale_x_log10()
+
+# Some outliers too
+```
+
+```{r}
+names(lapse_train)
+
+(a <- cor(lapse_train[, c(8, 10, 11, 13, 17)]))
+corrplot::corrplot(a)
+
+lapse_train %>%
+  ggplot(aes(x = capital, y = IMC)) +
+  geom_point()
+# we have no linear correlation between the numerical variables
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
