@@ -37,79 +37,64 @@ pacman::p_load(ranger, baguette)
 ## Code
 
 ```{r, eval = T}
-insurance <- readRDS("../0_data/insurance.RDS")
+insurance <- readRDS("../00_data/insurance.RDS")
 
 set.seed(23)
-insurance_folds <- vfold_cv(insurance, v = 3, strata = mortality)
+insurance_folds <- vfold_cv(insurance_train, v = 3, 
+                            strata = mortality)
 
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
+rfe_model <- rand_forest() %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification")
 
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model)
+# Predictive model for the deaths
+set.seed(1234)
+select_rec <- 
+  recipe(mortality ~ period + cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
+  step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 7)
+
+# The recursive feature selection with Random Forest discard the variables cover and good_health.
 ```
 
-To start, we are going to compare multiple models with different features or preprocessing methods but the model for all of them is going to be the same: glm
+To start, we are going to compare multiple models:
 
 ```{r}
-keep_pred <- control_resamples(save_pred = TRUE)
+keep_pred <- control_grid(
+  save_pred = TRUE, 
+  save_workflow = TRUE
+  )
+```
 
-base <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_log(capital, IMC, base = 10)
+```{r}
+# GLM and glmnet
 
-base_1 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_log(capital, IMC, base = 10)
+glm_recipe <- 
+  recipe(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
+         data = insurance_train) %>% 
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
+  step_log(capital, IMC, base = 10) %>%
+  step_novel(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
 
-base_2 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + capital, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_log(capital, base = 10)
+logistic_reg_glm_spec <-
+  logistic_reg() %>%
+  set_engine('glm')
 
-base_3 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) 
 
-base_4 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
 
-cat <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital_factor_2 + IMC_factor_2, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
+decision_tree_rpart_spec <-
+  decision_tree(tree_depth = tune(), min_n = tune(), cost_complexity = tune()) %>%
+  set_engine('rpart') %>%
+  set_mode('classification')
 
-cat_1 <- recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
+usemodels::use_glmnet(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
+         data = insurance_train)
 
-cat_2 <- recipe(mortality ~ period + sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
-
-cat_3 <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_2, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
-
-set_predictors <- list(
-  # original
-  base   = base,
-  base_1 = base_1,
-  base_2 = base_2, 
-  base_3 = base_3,
-  base_4 = base_4,
-  cat    = cat,  
-  cat_1  = cat_1, 
-  cat_2  = cat_2, 
-  cat_3  = cat_3
-)
-
-glm_models <- workflow_set(set_predictors, list(glm = glm_model), cross = F)
-glm_models
 ```
 
 ```{r, eval=F}
@@ -137,108 +122,49 @@ glm_models <-
 
 stopCluster(cl)
 
-# i 1 of 9 resampling: base_glm
-# v 1 of 9 resampling: base_glm (38.2s)
-# i 2 of 9 resampling: base_1_glm
-# v 2 of 9 resampling: base_1_glm (16.4s)
-# i 3 of 9 resampling: base_2_glm
-# v 3 of 9 resampling: base_2_glm (13.1s)
-# i 4 of 9 resampling: base_3_glm
-# v 4 of 9 resampling: base_3_glm (11.3s)
-# i 5 of 9 resampling: base_4_glm
-# v 5 of 9 resampling: base_4_glm (11s)
-# i 6 of 9 resampling: cat_glm
-# v 6 of 9 resampling: cat_glm (12.6s)
-# i 7 of 9 resampling: cat_1_glm
-# v 7 of 9 resampling: cat_1_glm (14.1s)
-# i 8 of 9 resampling: cat_2_glm
-# v 8 of 9 resampling: cat_2_glm (11.1s)
-# i 9 of 9 resampling: cat_3_glm
-# v 9 of 9 resampling: cat_3_glm (10.4s)
-
-# i 1 of 9 resampling: base_glm
-# v 1 of 9 resampling: base_glm (41.4s)
-# i 2 of 9 resampling: base_1_glm
-# v 2 of 9 resampling: base_1_glm (40.5s)
-# i 3 of 9 resampling: base_2_glm
-# v 3 of 9 resampling: base_2_glm (39.2s)
-# i 4 of 9 resampling: base_3_glm
-# v 4 of 9 resampling: base_3_glm (34.6s)
-# i 5 of 9 resampling: base_4_glm
-# v 5 of 9 resampling: base_4_glm (32.8s)
-# i 6 of 9 resampling: cat_glm
-# v 6 of 9 resampling: cat_glm (38.8s)
-# i 7 of 9 resampling: cat_1_glm
-# v 7 of 9 resampling: cat_1_glm (36.9s)
-# i 8 of 9 resampling: cat_2_glm
-# v 8 of 9 resampling: cat_2_glm (37.3s)
-# i 9 of 9 resampling: cat_3_glm
-# v 9 of 9 resampling: cat_3_glm (31.3s)
-```
-
-```{r}
-saveRDS(glm_models, "glm_models.RDS")
-```
-
-```{r}
-collect_metrics(glm_models, summarize = T)
-
-
-best_glm_model <- glm_models %>% 
-  pull_workflow_set_result("base_3_glm") 
-
-predictions <- collect_predictions(best_glm_model)
-
-predictions %>%
-  conf_mat(truth = mortality, estimate = .pred_class)
-```
-
-```{r}
-autoplot(glm_models, metric = "roc_auc")
 ```
 
 
 # Machine learning
 
 
+
+
+Let's try different models
+
 ```{r}
-cl <- makePSOCKcluster(6)
+kknn_recipe <- 
+  recipe(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
+         data = insurance_train) %>% 
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
+  step_novel(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+kknn_spec <- 
+  nearest_neighbor(neighbors = tune(), weight_func = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("kknn") 
+
+kknn_workflow <- 
+  workflow() %>% 
+  add_recipe(kknn_recipe) %>% 
+  add_model(kknn_spec) 
+
+
+cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
-tree_rpart_recipe <- 
-  recipe(formula = mortality ~ period + cover + sex + smoker + good_health + 
-    actuarial_age + duration + capital + IMC, data = insurance) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01)
-
-tree_rpart_spec <-
-  baguette::bag_tree() %>%
-  set_engine('rpart') %>%
-  set_mode('classification')
-
-tree_rpart_wflow <- 
-  workflow() %>% 
-  add_recipe(tree_rpart_recipe) %>% 
-  add_model(tree_rpart_spec) 
-
-set.seed(56931)
-tree_rpart_tune <-
-  tree_rpart_wflow %>%
-  fit_resamples(resamples = insurance_folds,
-                control = keep_pred, 
-                metrics = metric_set(roc_auc, kap))
+set.seed(35790)
+kknn_tune <- kknn_workflow %>%
+  tune_grid(
+    resamples = insurance_folds, 
+    grid = 10
+    )
 
 stopCluster(cl)
-
-collect_metrics(tree_rpart_tune)
-predictions <- collect_predictions(tree_rpart_tune)
-
-predictions %>%
-  conf_mat(truth = mortality, estimate = .pred_class)
 ```
-
-
-
-
 
 
 

@@ -180,10 +180,10 @@ insurance_lapse
 ```
 
 ```{r}
-# saveRDS(insurance, file = "../0_data/insurance.RDS")
-# saveRDS(insurance_lapse, file = "insurance_lapse.RDS")
+# saveRDS(insurance, file = "../00_data/insurance.RDS")
+# saveRDS(insurance_lapse, file = "../00_data/insurance_lapse.RDS")
 
-insurance <- readRDS("../0_data/insurance.RDS")
-insurance_lapse <- readRDS("../0_data/insurance_lapse.RDS")
+insurance <- readRDS("../00_data/insurance.RDS")
+insurance_lapse <- readRDS("../00_data/insurance_lapse.RDS")
 ```
 

@@ -35,7 +35,7 @@ pacman::p_load(ranger)
 ```
 
 ```{r}
-insurance <- readRDS("../0_data/insurance.RDS")
+insurance <- readRDS("../00_data/insurance.RDS")
 ```
 
 
