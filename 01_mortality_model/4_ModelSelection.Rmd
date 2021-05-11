@@ -39,66 +39,178 @@ pacman::p_load(ranger, baguette)
 ```{r, eval = T}
 insurance <- readRDS("../00_data/insurance.RDS")
 
+set.seed(123)
+
+insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
+insurance_train <- training(insurance_split)
+insurance_test  <- testing(insurance_split)
+
 set.seed(23)
 insurance_folds <- vfold_cv(insurance_train, v = 3, 
                             strata = mortality)
 
-rfe_model <- rand_forest() %>%
-  set_engine("ranger", importance = "permutation") %>%
-  set_mode("classification")
-
-# Predictive model for the deaths
-set.seed(1234)
-select_rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health +
-                   actuarial_age + duration + capital + IMC,
+basic_rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
          data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
-  step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 7)
-
-# The recursive feature selection with Random Forest discard the variables cover and good_health.
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_bs(capital, deg_free = 3) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
+                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
+                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk)
 ```
 
-To start, we are going to compare multiple models:
+We are going to compare the following models: gam, pls, random forest and neural networks.
 
 ```{r}
-keep_pred <- control_grid(
+grid_ctrl <- control_grid(
   save_pred = TRUE, 
   save_workflow = TRUE
   )
+
+my_metrics = metric_set(recall, kap, )
 ```
 
 ```{r}
-# GLM and glmnet
+# GLM
+glm_rec <- basic_rec
 
-glm_recipe <- 
-  recipe(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
-         data = insurance_train) %>% 
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
-  step_log(capital, IMC, base = 10) %>%
-  step_novel(all_nominal_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  step_zv(all_predictors()) %>%
-  step_normalize(all_numeric_predictors()) 
-
-logistic_reg_glm_spec <-
+glm_model <-
   logistic_reg() %>%
   set_engine('glm')
+```
 
-
-
-decision_tree_rpart_spec <-
-  decision_tree(tree_depth = tune(), min_n = tune(), cost_complexity = tune()) %>%
-  set_engine('rpart') %>%
+```{r}
+# PLS
+pls_rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_bs(capital, deg_free = 3) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
+                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
+                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk) %>%
+  step_zv(all_predictors())
+  
+pls_model <-
+  plsmod::pls(predictor_prop = tune(), num_comp = tune()) %>%
+  set_engine('mixOmics') %>%
   set_mode('classification')
+```
 
-usemodels::use_glmnet(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
-         data = insurance_train)
+```{r}
+# Random Forest
+rf_rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_bs(capital, deg_free = 3) %>%
+  step_interact(terms = ~ actuarial_age:sex + actuarial_age:smoker +
+                  actuarial_age:IMC_factor_1 + sex:smoker +
+                  sex:IMC_factor_1 + smoker:IMC_factor_1)
+
+rf_rec %>% prep() %>% juice
+
+ranger_spec <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_mode("classification") %>% 
+  set_engine("ranger")
+```
+
+
+```{r}
+mlp_rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_bs(capital, deg_free = 3) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
+                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
+                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk) %>%
+  step_zv(all_predictors()) %>%
+  step_corr(all_predictors())
+
+mlp_rec %>% prep() %>% juice
+
+mlp_model <-
+  mlp(hidden_units = tune(), penalty = tune(), dropout = tune(), epochs = tune(), activation = tune()) %>%
+  set_engine('keras') %>%
+  set_mode('classification')
+```
+
+
+
+```{r}
+wflow <- workflow_set(
+  preproc = list(
+    log_reg = glm_rec,
+    pls = pls_rec,
+    random = rf_rec,
+    neural_network = mlp_rec
+  ),
+  models = list(
+    glm_wf = glm_model,
+    wf = pls_model,
+    forest_wf = rfe_model,
+    mlp_wf = mlp_model
+  ),
+  cross = F
+)
+```
+
+```{r}
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+wflow_results <- wflow %>%
+  workflow_map(
+    seed = 1503,
+    resamples = insurance_folds,
+    grid = 10,
+    metrics = metric_set(miss_rate_vec),
+    control = grid_ctrl,
+    verbose = T
+   )
+
+stopCluster(cl)
+```
+
+```{r}
+# Results
+cost_matrix <- tribble(
+    ~truth,   ~estimate, ~cost,
+    "yes", "no",  2,
+    "no", "yes",  1
+  )
+
+wflow_results %>%
+  pull_workflow_set_result("log_reg_glm_wf") %>%
+  collect_metrics()
+
+wflow_results %>%
+  pull_workflow_set_result("log_reg_glmnet_wf") %>%
+  collect_predictions() %>%
+  group_by(id) %>%
+  classification_cost(mortality, .pred_yes, costs = cost_matrix)
+
+wflow_results %>%
+  pull_workflow_set_result("dec_tree_rpart_wf") %>%
+  collect_predictions() %>%
+  group_by(id) %>%
+  classification_cost(mortality, .pred_yes, costs = cost_matrix)
 
 ```
 
+
+
+
+
 ```{r, eval=F}
-cl <- makePSOCKcluster(6)
+cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
 # fit here

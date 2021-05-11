@@ -28,7 +28,7 @@ knitr::opts_chunk$set(warning = FALSE,
 ```{r, echo = F}
 # install.packages("pacman")
 # devtools::install_github("stevenpawley/recipeselectors")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip, ggfortify)
 theme_set(theme_bw())
 
 # Models packages
@@ -56,316 +56,6 @@ In this step of the project, we will analyze the following things:
 
 # Variable selection
 
-## Drop (p-value > 0.2)
-
-First of all, before doing any interaction between all the variables, we will fit a simple logistic regression model to see which variables have an effect on the outcome and which does not, removing those whose p-value is greater than 0.2.
-
-```{r}
-rec <- 
-  recipe(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC,
-         data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
-
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-# Fit
-glm_fit <- fit(glm_wflow, insurance_train)
-tidy(glm_fit) %>% 
-  # filter(p.value > 0.2) %>%
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-```
-
-```{r, eval=F}
-## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
-glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital + IMC, data = insurance_train, family = "binomial")
-
-drop1(glm_drop, test = "LRT")
-
-# Single term deletions
-# 
-# Model:
-# mortality ~ period + cover + sex + smoker + good_health + actuarial_age + 
-#     duration + capital + IMC
-#               Df Deviance    AIC     LRT  Pr(>Chi)    
-# <none>             4069.0 4093.0                      
-# period         2   4072.0 4092.0   2.961 0.2275521    
-# cover          2   4070.3 4090.3   1.279 0.5275235    
-# sex            1   4084.4 4106.4  15.398 8.709e-05 ***
-# smoker         1   4083.5 4105.5  14.431 0.0001454 ***
-# good_health    1   4072.2 4094.2   3.112 0.0777260 .  
-# actuarial_age  1   4252.6 4274.6 183.597 < 2.2e-16 ***
-# duration       1   4073.0 4095.0   3.912 0.0479543 *  
-# capital        1   4070.2 4092.2   1.124 0.2890350    
-# IMC            1   4069.7 4091.7   0.700 0.4028424    
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-
-drop1(update(glm_drop, as.formula(paste(".~.- cover"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC - capital"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- cover - IMC - capital - period"))), test = "LRT")
-
-# Single term deletions
-# 
-# Model:
-# mortality ~ sex + smoker + good_health + actuarial_age + duration
-#               Df Deviance    AIC     LRT  Pr(>Chi)    
-# <none>             4075.2 4087.2                      
-# sex            1   4098.9 4108.9  23.678 1.139e-06 ***
-# smoker         1   4090.5 4100.5  15.332 9.017e-05 ***
-# good_health    1   4077.3 4087.3   2.167     0.141    
-# actuarial_age  1   4276.2 4286.2 200.996 < 2.2e-16 ***
-# duration       1   4079.4 4089.4   4.176     0.041 *  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-```
-
-Therefore, we will remove the variables cover, duration and period from our model, and we could create an inferential model to explain better the mortality in terms of the predictors
-
-### Inferential model
-```{r}
-set.seed(23)
-# Recipe
-rec <- 
-  recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration, 
-         data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
-
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-glm_fit <- fit(glm_wflow, insurance_train)
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-
-# We can get also the odds ratio
-tidy(glm_fit) %>%
-  mutate(
-    odds_ratio = exp(estimate)
-  ) %>%
-  select(term, odds_ratio)
-```
-
-For instance, we can observe that if you were a woman, the odds of mortality are 0.48 times lower than if you were a man. However, this model is saying that if you had good health, the odds of mortality are 1.68 times bigger than if you had a bad health, which does not make much sense.
-
-Now, if we change the variables `IMC` and `capital` for their transformed variables, we can see if our inferential model could explain better.
-
-```{r, eval=F}
-## Also, we are going to fit the same model with in the traditional way to be able to do the drop1
-glm_drop <- glm(mortality ~ period + cover + sex + smoker + good_health + actuarial_age + duration + capital_factor_2 + IMC_factor_1, data = insurance_train, family = "binomial")
-
-drop1(glm_drop, test = "LRT")
-
-# Single term deletions
-# 
-# Model:
-# mortality ~ period + cover + sex + smoker + good_health + actuarial_age + 
-#     duration + capital_factor_2 + IMC_factor_1
-#                  Df Deviance    AIC     LRT  Pr(>Chi)    
-# <none>                4067.8 4093.8                      
-# period            2   4070.7 4092.7   2.867 0.2384699    
-# cover             2   4069.0 4091.0   1.162 0.5592091    
-# sex               1   4084.2 4108.2  16.351 5.262e-05 ***
-# smoker            1   4082.2 4106.2  14.428 0.0001456 ***
-# good_health       1   4070.9 4094.9   3.122 0.0772596 .  
-# actuarial_age     1   4250.2 4274.2 182.341 < 2.2e-16 ***
-# duration          1   4072.0 4096.0   4.224 0.0398630 *  
-# capital_factor_2  2   4068.1 4090.1   0.296 0.8625111    
-# IMC_factor_1      1   4070.6 4094.6   2.770 0.0960468 .  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2 - cover"))), test = "LRT")
-drop1(update(glm_drop, as.formula(paste(".~.- capital_factor_2 - cover - period"))), test = "LRT")
-
-# Single term deletions
-# 
-# Model:
-# mortality ~ sex + smoker + good_health + actuarial_age + duration + 
-#     IMC_factor_1
-#               Df Deviance    AIC     LRT  Pr(>Chi)    
-# <none>             4072.3 4086.3                      
-# sex            1   4089.2 4101.2  16.887 3.967e-05 ***
-# smoker         1   4087.5 4099.5  15.121 0.0001008 ***
-# good_health    1   4075.4 4087.4   3.045 0.0809905 .  
-# actuarial_age  1   4260.7 4272.7 188.315 < 2.2e-16 ***
-# duration       1   4076.3 4088.3   3.980 0.0460408 *  
-# IMC_factor_1   1   4075.2 4087.2   2.845 0.0916580 .  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-```
-
-```{r}
-set.seed(23)
-# Recipe
-rec <- 
-  recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_1,
-         data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors())
-
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-glm_fit <- fit(glm_wflow, insurance_train)
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-
-
-tidy(glm_fit) %>%
-  mutate(
-    odds_ratio = exp(estimate)
-  ) %>%
-  select(term, odds_ratio) 
-
-tidy(glm_fit) %>%
-  mutate(
-    odds_ratio = exp(estimate)
-  ) %>%
-  select(term, odds_ratio) %>%
-  ggplot(aes(x = odds_ratio, y = term)) +
-  geom_point(size = 2) + geom_vline(xintercept = 1)
-```
-
-
-## GAM models
-
-```{r}
-gam_model <- gam(mortality ~ period + cover + sex + smoker + good_health +
-                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
-                 data = insurance_train, family = "binomial")
-summary(gam_model)
-
-# Family: binomial 
-# Link function: logit 
-# 
-# Formula:
-# mortality ~ period + cover + sex + smoker + good_health + s(actuarial_age) + 
-#     s(duration) + s(capital) + s(IMC)
-# 
-# Parametric coefficients:
-#                Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)     -8.3424     0.4953 -16.842  < 2e-16 ***
-# period2011      -0.1216     0.1731  -0.703   0.4822    
-# period2012      -0.2788     0.1826  -1.527   0.1267    
-# cover2          -0.1199     0.3279  -0.366   0.7147    
-# cover3           0.1918     0.1951   0.983   0.3255    
-# sexwoman        -0.4665     0.1915  -2.436   0.0148 *  
-# smokeryes        0.6327     0.1589   3.982 6.82e-05 ***
-# good_healthyes   0.7406     0.4641   1.596   0.1105    
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Approximate significance of smooth terms:
-#                    edf Ref.df  Chi.sq p-value    
-# s(actuarial_age) 1.029  1.057 109.287 < 2e-16 ***
-# s(duration)      2.235  2.811   3.981 0.19047    
-# s(capital)       3.122  3.722  14.180 0.00421 ** 
-# s(IMC)           1.020  1.041   3.199 0.07645 .  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# R-sq.(adj) =  0.000948   Deviance explained = 6.58%
-# UBRE = -0.98893  Scale est. = 1         n = 264473
-
-gam_model <- gam(mortality ~ period + sex + smoker + good_health +
-                   actuarial_age + s(duration) + s(capital) + s(IMC),
-                 data = insurance_train, family = "binomial")
-summary(gam_model)
-
-gam_model <- gam(mortality ~ sex + smoker + good_health +
-                   actuarial_age + s(duration) + s(capital) + IMC,
-                 data = insurance_train, family = "binomial")
-summary(gam_model)
-
-gam_model <- gam(mortality ~ sex + smoker + good_health +
-                   actuarial_age + s(capital) + IMC_factor_1,
-                 data = insurance_train, family = "binomial")
-summary(gam_model)
-
-gam_model <- gam(mortality ~ sex + smoker +
-                   actuarial_age + s(capital) + IMC_factor_1,
-                 data = insurance_train, family = "binomial")
-summary(gam_model)
-tidy(gam_model)
-
-# Parametric coefficients:
-#                   Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)      -11.64784    0.43637 -26.693  < 2e-16 ***
-# sexwoman          -0.50458    0.18456  -2.734  0.00626 ** 
-# smokeryes          0.64120    0.15578   4.116 3.85e-05 ***
-# actuarial_age      0.09503    0.00874  10.873  < 2e-16 ***
-# IMC_factor_1risk   0.28128    0.15610   1.802  0.07155 .  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Approximate significance of smooth terms:
-#              edf Ref.df Chi.sq p-value   
-# s(capital) 3.052  3.642  12.92 0.00689 **
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# R-sq.(adj) =  0.001   Deviance explained = 6.21%
-# UBRE = -0.98894  Scale est. = 1         n = 264473
-```
-
-
-```{r}
-set.seed(23)
-# Recipe
-rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
-         data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_bs(capital, deg_free = 3)
-
-# Model
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-# Workflow
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-glm_fit <- fit(glm_wflow, insurance_train)
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-```
-
-
 ## Recursive feature selection with Random Forest
 
 
@@ -381,18 +71,163 @@ select_rec <-
                    actuarial_age + duration + capital + IMC,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 10)
+  step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 7)
 
 new_data <- select_rec %>% prep() %>% juice()
 new_data
+
+# The recursive feature selection with Random Forest discard the variables cover and good_health.
 ```
 
 
 
+## GAM models
+
+```{r}
+gam_model <- gam(mortality ~ period + sex + smoker +
+                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
+                 data = insurance_train, family = "binomial")
+summary(gam_model)
+
+# Parametric coefficients:
+#             Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)  -7.5754     0.1579 -47.972  < 2e-16 ***
+# period2011   -0.1234     0.1730  -0.713  0.47579    
+# period2012   -0.2812     0.1824  -1.541  0.12323    
+# sexwoman     -0.5228     0.1903  -2.747  0.00602 ** 
+# smokeryes     0.6366     0.1587   4.011 6.05e-05 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                    edf Ref.df  Chi.sq p-value    
+# s(actuarial_age) 1.029  1.057 114.620 < 2e-16 ***
+# s(duration)      2.182  2.745   3.646 0.20969    
+# s(capital)       3.159  3.762  13.768 0.00515 ** 
+# s(IMC)           1.020  1.040   1.214 0.27912    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# R-sq.(adj) =  0.00102   Deviance explained = 6.44%
+# UBRE = -0.98893  Scale est. = 1         n = 264473
+
+gam_model <- gam(mortality ~ sex + smoker + IMC_factor_1 +
+                   actuarial_age + s(capital),
+                 data = insurance_train, family = "binomial")
+summary(gam_model)
+
+# Parametric coefficients:
+#                   Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)      -11.64784    0.43637 -26.693  < 2e-16 ***
+# sexwoman          -0.50458    0.18456  -2.734  0.00626 ** 
+# smokeryes          0.64120    0.15578   4.116 3.85e-05 ***
+# IMC_factor_1risk   0.28128    0.15610   1.802  0.07155 .  
+# actuarial_age      0.09503    0.00874  10.873  < 2e-16 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#              edf Ref.df Chi.sq p-value   
+# s(capital) 3.052  3.642  12.92 0.00689 **
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# R-sq.(adj) =  0.001   Deviance explained = 6.21%
+# UBRE = -0.98894  Scale est. = 1         n = 264473
+plot(gam_model)
+
+prob <- predict(gam_model, newdata = insurance_train, type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train$mortality)
+
+pred_curve <- prob %>%
+  roc_curve(mortality, value, event_level = "second")
+
+pred_curve %>%
+  mutate(sum = specificity + sensitivity) %>%
+  filter(sum == max(sum))
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.0006790912,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class)
+
+prob %>%
+  roc_auc(mortality, value, event_level = "second")
+autoplot(pred_curve)
+```
+
+# With interactions:
+```{r}
+gam_model <- gam(mortality ~ sex + smoker + IMC_factor_1 + actuarial_age +
+                   s(capital) + sex:smoker + sex:IMC_factor_1 +
+                   sex:actuarial_age + smoker:IMC_factor_1 +
+                   smoker:actuarial_age + IMC_factor_1:actuarial_age,
+                 data = insurance_train, family = "binomial")
+summary(gam_model) # No significant interaction
+
+prob <- predict(gam_model, newdata = insurance_train, type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train$mortality)
+
+pred_curve <- prob %>%
+  roc_curve(mortality, value, event_level = "second")
+
+pred_curve %>%
+  mutate(sum = specificity + sensitivity) %>%
+  filter(sum == max(sum))
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.0006344557,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class)
+
+prob %>%
+  roc_auc(mortality, value, event_level = "second")
+autoplot(pred_curve)
+```
+
+
+
+```{r}
+set.seed(23)
+# Recipe
+rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_bs(capital, deg_free = 3)
+
+rec %>% prep() %>% juice
+
+# Model
+glm_model <- logistic_reg() %>%
+  set_engine("glm")
+
+# Workflow
+glm_wflow <- workflow() %>%
+  add_model(glm_model) %>%
+  add_recipe(rec)
+
+glm_fit <- fit(glm_wflow, insurance_train)
+tidy(glm_fit)
+```
+
 
 # Interaction terms
 
-Now, our model is going to be formed by the variables sex, smoker, good_health, actuarial_age, duration and IMC_factor_1. Regarding the interactions, we can add interaction terms between two categorical variables, or between one categorical and one numerical.
+Now, our model is going to be formed by the variables sex, smoker, IMC_factor_1 and capital. Regarding the interactions, we can add interaction terms between two categorical variables, or between one categorical and one numerical.
+
+```{r}
+rec <- rec %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes + actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes + sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk)
+```
+
 
 
 # Preprocessing steps:
@@ -403,102 +238,62 @@ After seeing some description of the variables, their effect on the model and th
 
 2. Convert to dummy variables all categorical since it is usually useful for the majority of models.
 
-3. For the numeric variables `capital` and `IMC`, we will apply the log10 for making them symmetric.
+(3. We will apply natural splines to the variable `capital`)
 
-4. Based on the AIC, we will include the interaction sex:duration.
+4. We will add the interactions between the final variables.
 
 Also, for some models, it is mandatory to scale and center the variables, but for the moment, we are not going to do it.
 
-
 ```{r}
 set.seed(23)
-
-# Formula
-rec <- recipe(mortality ~ sex + smoker + good_health + actuarial_age + duration + IMC_factor_1,
-              data = insurance_train)
-
-# Preprocessing steps
-rec <- rec %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
+# Recipe
+rec <- 
+  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:starts_with("sex"))
+  step_bs(capital, deg_free = 3) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
+                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
+                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk)
 
-# Data preprocessed
-insurance_train_prep <- rec %>%
-  prep() %>%
-  bake(new_data = NULL)
+rec %>% prep() %>% juice
 
-summary(insurance_train_prep$mortality)
-```
-
-Model and workflow:
-```{r}
+# Model
 glm_model <- logistic_reg() %>%
   set_engine("glm")
 
+# Workflow
 glm_wflow <- workflow() %>%
   add_model(glm_model) %>%
   add_recipe(rec)
 
 glm_fit <- fit(glm_wflow, insurance_train)
-
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-```
-
-Removing good_health:
-```{r}
-set.seed(23)
-
-# Formula
-rec <- recipe(mortality ~ sex + smoker + actuarial_age + duration + IMC_factor_1,
-              data = insurance_train)
-
-# Preprocessing steps
-rec <- rec %>%
-  themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:starts_with("sex"))
-
-glm_model <- logistic_reg() %>%
-  set_engine("glm")
-
-glm_wflow <- workflow() %>%
-  add_model(glm_model) %>%
-  add_recipe(rec)
-
-glm_fit <- fit(glm_wflow, insurance_train)
-
-tidy(glm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+tidy(glm_fit)
 ```
 
 
 Prediction in the training set and roc curve:
 ```{r}
-pred <- predict(glm_fit, insurance_train)
+# pred <- predict(glm_fit, insurance_train)
 prob <- predict(glm_fit, insurance_train, type = "prob")
-
-pred <- pred %>%
-  mutate(mortality = insurance_train$mortality)
-
-pred %>%
-  conf_mat(truth = mortality,
-           estimate = .pred_class)
-
-pred %>%
-  conf_mat(truth = mortality,
-           estimate = .pred_class) %>%
-  summary()
 
 prob <- prob %>%
   mutate(mortality = insurance_train$mortality)
+
 pred_curve <- prob %>%
   roc_curve(mortality, .pred_yes, event_level = "second")
+
+pred_curve %>%
+  mutate(sum = specificity + sensitivity) %>%
+  filter(sum == max(sum))
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(.pred_yes > 0.00866713,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class)
+
 prob %>%
   roc_auc(mortality, .pred_no)
 autoplot(pred_curve)
