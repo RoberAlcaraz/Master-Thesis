@@ -31,7 +31,7 @@ pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR,
 theme_set(theme_bw())
 
 # Models packages
-pacman::p_load(ranger, baguette)
+pacman::p_load(ranger, keras, tensorflow)
 ```
 
 ## Code
@@ -68,7 +68,7 @@ grid_ctrl <- control_grid(
   save_workflow = TRUE
   )
 
-my_metrics = metric_set(recall, kap, )
+my_metrics = metric_set(recall, kap)
 ```
 
 ```{r}
@@ -78,6 +78,11 @@ glm_rec <- basic_rec
 glm_model <-
   logistic_reg() %>%
   set_engine('glm')
+
+glm_wf <- 
+  workflow() %>%
+  add_recipe(glm_rec) %>%
+  add_model(glm_model)
 ```
 
 ```{r}
@@ -98,6 +103,11 @@ pls_model <-
   plsmod::pls(predictor_prop = tune(), num_comp = tune()) %>%
   set_engine('mixOmics') %>%
   set_mode('classification')
+
+pls_wf <- 
+  workflow() %>%
+  add_recipe(pls_rec) %>%
+  add_model(pls_model)
 ```
 
 ```{r}
@@ -113,10 +123,15 @@ rf_rec <-
 
 rf_rec %>% prep() %>% juice
 
-ranger_spec <- 
+rf_model <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
   set_mode("classification") %>% 
   set_engine("ranger")
+
+rf_wf <- 
+  workflow() %>%
+  add_recipe(rf_rec) %>%
+  add_model(rf_model)
 ```
 
 
@@ -137,44 +152,105 @@ mlp_rec <-
 mlp_rec %>% prep() %>% juice
 
 mlp_model <-
-  mlp(hidden_units = tune(), penalty = tune(), dropout = tune(), epochs = tune(), activation = tune()) %>%
+  mlp(hidden_units = tune(), epochs = tune(), activation = tune()) %>%
   set_engine('keras') %>%
   set_mode('classification')
+
+mlp_wf <- 
+  workflow() %>%
+  add_recipe(mlp_rec) %>%
+  add_model(mlp_model)
 ```
 
 
 
 ```{r}
-wflow <- workflow_set(
-  preproc = list(
-    log_reg = glm_rec,
-    pls = pls_rec,
-    random = rf_rec,
-    neural_network = mlp_rec
-  ),
-  models = list(
-    glm_wf = glm_model,
-    wf = pls_model,
-    forest_wf = rfe_model,
-    mlp_wf = mlp_model
-  ),
-  cross = F
-)
+# GLM
+
+set.seed(123)
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+glm_wf_fit <- glm_wf %>%
+  fit_resamples(
+    resamples = insurance_folds,
+    metrics = my_metrics,
+    verbose = T
+    )
+
+stopCluster(cl)
+```
+
+```{r}
+# PLS
+set.seed(123)
+max_ent_pls <- grid_max_entropy(parameters(pls_wf), size = 5)
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+pls_wf_tune <- pls_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_pls,
+    control = grid_ctrl,
+    metrics = my_metrics,
+    verbose = T
+    )
+
+stopCluster(cl)
+```
+
+
+```{r}
+# Random Forest
+set.seed(123)
+
+rf_param <- rf_wf %>%
+  parameters() %>%
+  update(mtry = finalize(mtry(c(1, 14))))
+
+max_ent_rf <- grid_max_entropy(rf_param, size = 5)
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+rf_wf_tune <- rf_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_rf,
+    control = grid_ctrl,
+    metrics = my_metrics,
+    verbose = T
+    )
+
+stopCluster(cl)
+```
+```{r}
+set.seed(123)
+max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 5)
+
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+mlp_wf_tune <- mlp_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_mlp,
+    control = grid_ctrl,
+    metrics = my_metrics,
+    verbose = T
+    )
+
+stopCluster(cl)
 ```
 
 ```{r}
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
-wflow_results <- wflow %>%
-  workflow_map(
-    seed = 1503,
-    resamples = insurance_folds,
-    grid = 10,
-    metrics = metric_set(miss_rate_vec),
-    control = grid_ctrl,
-    verbose = T
-   )
+
 
 stopCluster(cl)
 ```
