@@ -144,19 +144,81 @@ prob <- as_tibble(prob) %>%
 pred_curve <- prob %>%
   roc_curve(mortality, value, event_level = "second")
 
-pred_curve %>%
+thres <- pred_curve %>%
   mutate(sum = specificity + sensitivity) %>%
-  filter(sum == max(sum))
+  filter(sum == max(sum)) %>%
+  select(.threshold) %>%
+  pull()
 
-prob %>%
-  mutate(pred_class = as.factor(ifelse(value > 0.0006790912,
+# thres <- 0.0006790912
+confusion_matrix <- prob %>%
+  mutate(pred_class = as.factor(ifelse(value > thres,
                                        "yes", "no"))) %>%
   conf_mat(truth = mortality,
            estimate = pred_class)
+confusion_matrix %>%
+  summary(event_level = "second", beta = 2)
 
 prob %>%
   roc_auc(mortality, value, event_level = "second")
 autoplot(pred_curve)
+```
+
+```{r}
+t <- pred_curve %>%
+  select(.threshold) %>%
+  pull
+
+t <- t[-1]
+t <- t[-90748]
+
+t <- quantile(t, probs = seq(0, 0.8, 0.001))
+f_metric <- seq(1, length(t))
+length(f_metric)
+  
+for (i in 1:length(t)){
+  f_metric[i] <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+    f_meas(mortality, pred_class, beta = 2, event_level = "second") %>% select(.estimate) %>% pull()
+}
+
+df <- as_tibble(cbind(t, f_metric))
+df %>%
+  filter(f_metric == max(f_metric))
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.0006758093,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class) %>%
+  summary(beta = 2, event_level = "second")
+
+t <- pred_curve %>%
+  select(.threshold) %>%
+  pull
+
+length(which(t < 0.0006758093))
+t <- t[58000:59000]
+
+f_metric <- seq(1, length(t))
+length(f_metric)
+  
+for (i in 1:length(t)){
+  f_metric[i] <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+    f_meas(mortality, pred_class, beta = 2, event_level = "second") %>% select(.estimate) %>% pull()
+}
+
+df <- as_tibble(cbind(t, f_metric))
+df %>%
+  filter(f_metric == max(f_metric))
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.0006790775,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class) %>%
+  summary(beta = 2, event_level = "second")
 ```
 
 # With interactions:
