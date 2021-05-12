@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel, usemodels)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel, usemodels, mgcv)
 theme_set(theme_bw())
 
 # Models packages
@@ -65,25 +65,35 @@ We are going to compare the following models: gam, pls, random forest and neural
 ```{r}
 grid_ctrl <- control_grid(
   save_pred = TRUE, 
-  save_workflow = TRUE
+  save_workflow = TRUE, 
+  event_level = "second"
   )
 
-my_metrics = metric_set(recall, kap)
+f_meas_2 <- function(data, truth, estimate, na_rm = TRUE, ...){
+  f_meas(
+    data = data,
+    truth = !! rlang::enquo(truth),
+    estimate = !! rlang::enquo(estimate),
+    # set beta = 2
+    beta = 2,
+    na_rm = TRUE,
+    ...
+  )
+}
+
+f_meas_2 <- new_class_metric(f_meas_2, direction = "maximize")
+
+# It works
+# prob %>%
+#     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+#     f_meas(mortality, pred_class, beta = 2, event_level = "second")
+# prob %>%
+#     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+#     f_meas_2(mortality, pred_class)
+
+my_metrics = metric_set(f_meas_2, kap, recall)
 ```
 
-```{r}
-# GLM
-glm_rec <- basic_rec
-
-glm_model <-
-  logistic_reg() %>%
-  set_engine('glm')
-
-glm_wf <- 
-  workflow() %>%
-  add_recipe(glm_rec) %>%
-  add_model(glm_model)
-```
 
 ```{r}
 # PLS
@@ -165,21 +175,41 @@ mlp_wf <-
 
 
 ```{r}
-# GLM
+# GAM
+n <- nrow(insurance_folds)
 
-set.seed(123)
+f2 <- seq(1, n)
+kappa <- seq(1, n)
+rec <- seq(1, n)
 
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
+for (i in 1:n){
+  analysis_data <- analysis(insurance_folds$splits[[i]])
+  validation_data <- assessment(insurance_folds$splits[[i]])
+  
+  gam_model <- gam(mortality ~ sex + smoker + IMC_factor_1 +
+                     actuarial_age + s(capital),
+                   data = analysis_data, family = "binomial")
+  
+  prob <- predict(gam_model, newdata = validation_data, type = "response")
 
-glm_wf_fit <- glm_wf %>%
-  fit_resamples(
-    resamples = insurance_folds,
-    metrics = my_metrics,
-    verbose = T
-    )
+  prob <- as_tibble(prob) %>%
+    mutate(mortality = validation_data$mortality)
+  
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > 0.0006790775, "yes", "no"))) %>%
+    conf_mat(truth = mortality, estimate = pred_class)
+  
+  f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 2) %>%
+    filter(.metric == "f_meas") %>% select(.estimate) %>% pull()
+  kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% select(.estimate) %>% pull()
+  rec[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "recall") %>% select(.estimate) %>% pull()
+}
 
-stopCluster(cl)
+mean(f2)
+mean(kappa)
+mean(rec)
 ```
 
 ```{r}
