@@ -35,7 +35,7 @@ pacman::p_load(ranger)
 ```
 
 ```{r}
-lapse_data <- readRDS("0_data/insurance_lapse.RDS")
+lapse_data <- readRDS("../00_data/insurance_lapse.RDS")
 ```
 
 # Description and visualization of the variables
@@ -261,11 +261,6 @@ lapse_train %>%
 
 # Very significant
 
-# duration_cat
-lapse_train %>%
-  ggplot(aes(x = duration_cat, color=lapse, fill=lapse)) +
-  geom_histogram(aes(y=..density..), alpha = 0.5)+
-  geom_density(alpha=.2, fill="#FF6666") 
 ```
 ### Capital
 ```{r}
