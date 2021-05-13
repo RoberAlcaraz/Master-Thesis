@@ -46,7 +46,7 @@ insurance_train <- training(insurance_split)
 insurance_test  <- testing(insurance_split)
 
 set.seed(23)
-insurance_folds <- vfold_cv(insurance_train, v = 3, 
+insurance_folds <- vfold_cv(insurance_train, v = 5, 
                             strata = mortality)
 
 basic_rec <- 
@@ -91,7 +91,7 @@ f_meas_2 <- new_class_metric(f_meas_2, direction = "maximize")
 #     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
 #     f_meas_2(mortality, pred_class)
 
-my_metrics = metric_set(f_meas_2, kap, recall)
+my_metrics = metric_set(f_meas_2, recall, kap)
 ```
 
 
@@ -131,7 +131,6 @@ rf_rec <-
                   actuarial_age:IMC_factor_1 + sex:smoker +
                   sex:IMC_factor_1 + smoker:IMC_factor_1)
 
-rf_rec %>% prep() %>% juice
 
 rf_model <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
@@ -158,8 +157,6 @@ mlp_rec <-
                   sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk) %>%
   step_zv(all_predictors()) %>%
   step_corr(all_predictors())
-
-mlp_rec %>% prep() %>% juice
 
 mlp_model <-
   mlp(hidden_units = tune(), epochs = tune(), activation = tune()) %>%
@@ -217,7 +214,7 @@ mean(rec)
 set.seed(123)
 max_ent_pls <- grid_max_entropy(parameters(pls_wf), size = 5)
 
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(6)
 registerDoParallel(cl)
 
 pls_wf_tune <- pls_wf %>%
@@ -225,8 +222,7 @@ pls_wf_tune <- pls_wf %>%
     resamples = insurance_folds,
     grid = max_ent_pls,
     control = grid_ctrl,
-    metrics = my_metrics,
-    verbose = T
+    metrics = my_metrics
     )
 
 stopCluster(cl)
@@ -257,6 +253,7 @@ rf_wf_tune <- rf_wf %>%
 
 stopCluster(cl)
 ```
+
 ```{r}
 set.seed(123)
 max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 5)
@@ -276,42 +273,6 @@ mlp_wf_tune <- mlp_wf %>%
 stopCluster(cl)
 ```
 
-```{r}
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
-
-
-
-stopCluster(cl)
-```
-
-```{r}
-# Results
-cost_matrix <- tribble(
-    ~truth,   ~estimate, ~cost,
-    "yes", "no",  2,
-    "no", "yes",  1
-  )
-
-wflow_results %>%
-  pull_workflow_set_result("log_reg_glm_wf") %>%
-  collect_metrics()
-
-wflow_results %>%
-  pull_workflow_set_result("log_reg_glmnet_wf") %>%
-  collect_predictions() %>%
-  group_by(id) %>%
-  classification_cost(mortality, .pred_yes, costs = cost_matrix)
-
-wflow_results %>%
-  pull_workflow_set_result("dec_tree_rpart_wf") %>%
-  collect_predictions() %>%
-  group_by(id) %>%
-  classification_cost(mortality, .pred_yes, costs = cost_matrix)
-
-```
-
-
 
 
 
@@ -323,75 +284,4 @@ registerDoParallel(cl)
 
 stopCluster(cl)
 ```
-
-
-```{r, eval = F}
-cl <- makePSOCKcluster(6)
-registerDoParallel(cl)
-
-glm_models <- 
-  glm_models %>% 
-  workflow_map("fit_resamples", 
-               # Options to `workflow_map()`: 
-               seed = 23, verbose = TRUE,
-               # Options to `fit_resamples()`: 
-               resamples = insurance_folds, control = keep_pred,
-               metrics = metric_set(roc_auc, kap))
-
-stopCluster(cl)
-
-```
-
-
-# Machine learning
-
-
-
-
-Let's try different models
-
-```{r}
-kknn_recipe <- 
-  recipe(formula = mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC, 
-         data = insurance_train) %>% 
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 1234) %>%
-  step_novel(all_nominal_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) 
-
-kknn_spec <- 
-  nearest_neighbor(neighbors = tune(), weight_func = tune()) %>% 
-  set_mode("classification") %>% 
-  set_engine("kknn") 
-
-kknn_workflow <- 
-  workflow() %>% 
-  add_recipe(kknn_recipe) %>% 
-  add_model(kknn_spec) 
-
-
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
-
-set.seed(35790)
-kknn_tune <- kknn_workflow %>%
-  tune_grid(
-    resamples = insurance_folds, 
-    grid = 10
-    )
-
-stopCluster(cl)
-```
-
-
-
-
-
-
-
-
-
-
-
 
