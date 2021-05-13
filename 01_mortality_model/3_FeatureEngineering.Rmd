@@ -144,6 +144,11 @@ prob <- as_tibble(prob) %>%
 pred_curve <- prob %>%
   roc_curve(mortality, value, event_level = "second")
 
+prec_rec_curve <- prob %>%
+  pr_curve(mortality, value, event_level = "second")
+
+autoplot(prec_rec_curve)
+
 thres <- pred_curve %>%
   mutate(sum = specificity + sensitivity) %>%
   filter(sum == max(sum)) %>%

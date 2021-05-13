@@ -148,7 +148,7 @@ rf_wf <-
 mlp_rec <- 
   recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
          data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  themis::step_downsample(mortality, seed = 123) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_bs(capital, deg_free = 3) %>%
@@ -271,6 +271,35 @@ mlp_wf_tune <- mlp_wf %>%
     )
 
 stopCluster(cl)
+
+mlp_param <- mlp_wf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "f_meas") %>%
+  arrange(desc(mean)) %>%
+  slice(1) %>%
+  select(hidden_units, epochs, activation)
+
+mlp_param <- tibble(
+  hidden_units = 9,
+  epochs = 210,
+  activation = "linear"
+)
+
+autoplot(mlp_wf_tune)
+```
+
+```{r}
+mlp_wf <- mlp_wf %>%
+  finalize_workflow(mlp_param)
+
+final_wf <- mlp_wf %>%
+  last_fit(insurance_split)
+
+final_wf %>%
+  collect_predictions() %>%
+  conf_mat(truth = mortality,
+           estimate = .pred_class) %>%
+  summary(event_level = "second", beta = 2)
 ```
 
 
