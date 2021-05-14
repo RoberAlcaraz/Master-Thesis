@@ -27,11 +27,12 @@ knitr::opts_chunk$set(warning = FALSE,
 
 ```{r, echo = F}
 # install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel, usemodels, mgcv)
+pacman::p_load(tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel, usemodels, mgcv)
 theme_set(theme_bw())
 
 # Models packages
-pacman::p_load(ranger, keras, tensorflow)
+pacman::p_load(ranger, keras, tensorflow, mixOmics)
+library(tidyverse, attach.required = T)
 ```
 
 ## Code
@@ -148,7 +149,7 @@ rf_wf <-
 mlp_rec <- 
   recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
          data = insurance_train) %>%
-  themis::step_downsample(mortality, seed = 123) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_bs(capital, deg_free = 3) %>%
@@ -179,13 +180,21 @@ f2 <- seq(1, n)
 kappa <- seq(1, n)
 rec <- seq(1, n)
 
+t <- Sys.time()
 for (i in 1:n){
   analysis_data <- analysis(insurance_folds$splits[[i]])
+  analysis_data <- 
+    recipe(mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC,
+           data = analysis_data) %>%
+    themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+    prep() %>% juice()
+  
   validation_data <- assessment(insurance_folds$splits[[i]])
   
-  gam_model <- gam(mortality ~ sex + smoker + IMC_factor_1 +
-                     actuarial_age + s(capital),
-                   data = analysis_data, family = "binomial")
+  gam_model <- gam(mortality ~ period + sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps"),
+                 data = analysis_data, family = "binomial", method = "REML", select = F)
   
   prob <- predict(gam_model, newdata = validation_data, type = "response")
 
@@ -197,23 +206,24 @@ for (i in 1:n){
     conf_mat(truth = mortality, estimate = pred_class)
   
   f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 2) %>%
-    filter(.metric == "f_meas") %>% select(.estimate) %>% pull()
+    filter(.metric == "f_meas") %>% dplyr::select(.estimate) %>% pull()
   kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
-    filter(.metric == "kap") %>% select(.estimate) %>% pull()
+    filter(.metric == "kap") %>% dplyr::select(.estimate) %>% pull()
   rec[i] <- confusion_matrix %>% summary(event_level = "second") %>%
-    filter(.metric == "recall") %>% select(.estimate) %>% pull()
+    filter(.metric == "recall") %>% dplyr::select(.estimate) %>% pull()
 }
 
+t1 <- Sys.time()
+t1 - t
 mean(f2)
 mean(kappa)
 mean(rec)
-```
 
-```{r}
 # PLS
 set.seed(123)
-max_ent_pls <- grid_max_entropy(parameters(pls_wf), size = 5)
+max_ent_pls <- grid_max_entropy(parameters(pls_wf), size = 2)
 
+t <- Sys.time()
 cl <- makePSOCKcluster(6)
 registerDoParallel(cl)
 
@@ -226,10 +236,9 @@ pls_wf_tune <- pls_wf %>%
     )
 
 stopCluster(cl)
-```
+t2 <- Sys.time()
+t2 - t
 
-
-```{r}
 # Random Forest
 set.seed(123)
 
@@ -239,6 +248,7 @@ rf_param <- rf_wf %>%
 
 max_ent_rf <- grid_max_entropy(rf_param, size = 5)
 
+t <- Sys.time()
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
@@ -252,12 +262,15 @@ rf_wf_tune <- rf_wf %>%
     )
 
 stopCluster(cl)
-```
 
-```{r}
+t3 <- Sys.time()
+t3 - t
+
+
 set.seed(123)
 max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 5)
 
+t <- Sys.time()
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
@@ -272,12 +285,17 @@ mlp_wf_tune <- mlp_wf %>%
 
 stopCluster(cl)
 
+t4 <- Sys.time()
+t4 - t
+```
+
+```{r}
 mlp_param <- mlp_wf_tune %>%
   collect_metrics() %>%
   filter(.metric == "f_meas") %>%
   arrange(desc(mean)) %>%
   slice(1) %>%
-  select(hidden_units, epochs, activation)
+  dplyr::select(hidden_units, epochs, activation)
 
 mlp_param <- tibble(
   hidden_units = 9,
@@ -286,9 +304,7 @@ mlp_param <- tibble(
 )
 
 autoplot(mlp_wf_tune)
-```
-
-```{r}
+2
 mlp_wf <- mlp_wf %>%
   finalize_workflow(mlp_param)
 
