@@ -84,62 +84,75 @@ new_data
 ## GAM models
 
 ```{r}
+insurance_train_prep <- 
+  recipe(mortality ~ period + sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  prep() %>% juice()
+
 gam_model <- gam(mortality ~ period + sex + smoker +
-                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
-                 data = insurance_train, family = "binomial")
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps"),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = F)
 summary(gam_model)
 
 # Parametric coefficients:
-#             Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)  -7.5754     0.1579 -47.972  < 2e-16 ***
-# period2011   -0.1234     0.1730  -0.713  0.47579    
-# period2012   -0.2812     0.1824  -1.541  0.12323    
-# sexwoman     -0.5228     0.1903  -2.747  0.00602 ** 
-# smokeryes     0.6366     0.1587   4.011 6.05e-05 ***
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -5.00627    0.04556 -109.876  < 2e-16 ***
+# period2011  -0.15581    0.04709   -3.309 0.000937 ***
+# period2012  -0.23556    0.04925   -4.783 1.73e-06 ***
+# sexwoman    -0.54077    0.05442   -9.936  < 2e-16 ***
+# smokeryes    0.70401    0.04278   16.457  < 2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#                    edf Ref.df  Chi.sq p-value    
-# s(actuarial_age) 1.029  1.057 114.620 < 2e-16 ***
-# s(duration)      2.182  2.745   3.646 0.20969    
-# s(capital)       3.159  3.762  13.768 0.00515 ** 
-# s(IMC)           1.020  1.040   1.214 0.27912    
+#                    edf Ref.df  Chi.sq  p-value    
+# s(actuarial_age) 6.620      9 1789.60  < 2e-16 ***
+# s(duration)      7.741      9  108.65  < 2e-16 ***
+# s(capital)       4.858      9  164.00  < 2e-16 ***
+# s(IMC)           3.472      9   31.66 4.31e-07 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# R-sq.(adj) =  0.00102   Deviance explained = 6.44%
-# UBRE = -0.98893  Scale est. = 1         n = 264473
+#
+# R-sq.(adj) =  0.0195   Deviance explained = 10.6%
+# -REML =  13334  Scale est. = 1         n = 266927
 
-gam_model <- gam(mortality ~ sex + smoker + IMC_factor_1 +
-                   actuarial_age + s(capital),
-                 data = insurance_train, family = "binomial")
+gam_model <- gam(mortality ~ period + sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps"),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = F)
 summary(gam_model)
 
 # Parametric coefficients:
-#                   Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)      -11.64784    0.43637 -26.693  < 2e-16 ***
-# sexwoman          -0.50458    0.18456  -2.734  0.00626 ** 
-# smokeryes          0.64120    0.15578   4.116 3.85e-05 ***
-# IMC_factor_1risk   0.28128    0.15610   1.802  0.07155 .  
-# actuarial_age      0.09503    0.00874  10.873  < 2e-16 ***
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -5.01508    0.04579 -109.521  < 2e-16 ***
+# period2011  -0.15452    0.04709   -3.281  0.00103 ** 
+# period2012  -0.23469    0.04924   -4.766 1.88e-06 ***
+# sexwoman    -0.54183    0.05450   -9.942  < 2e-16 ***
+# smokeryes    0.70454    0.04278   16.468  < 2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#              edf Ref.df Chi.sq p-value   
-# s(capital) 3.052  3.642  12.92 0.00689 **
+#                    edf Ref.df  Chi.sq  p-value    
+# s(actuarial_age) 6.725  6.999 1793.16  < 2e-16 ***
+# s(duration)      7.694  7.961   98.69  < 2e-16 ***
+# s(capital)       4.436  4.746  146.86  < 2e-16 ***
+# s(IMC)           4.303  4.828   34.27 6.32e-06 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# R-sq.(adj) =  0.001   Deviance explained = 6.21%
-# UBRE = -0.98894  Scale est. = 1         n = 264473
-plot(gam_model)
+# R-sq.(adj) =  0.0197   Deviance explained = 10.7%
+# -REML =  13310  Scale est. = 1         n = 266927
 
-prob <- predict(gam_model, newdata = insurance_train, type = "response")
+plot(gam_model, residuals = T, scheme = 1, col = "red")
+
+prob <- predict(gam_model, newdata = insurance_train_prep, type = "response")
 
 prob <- as_tibble(prob) %>%
-  mutate(mortality = insurance_train$mortality)
+  mutate(mortality = insurance_train_prep$mortality)
 
 pred_curve <- prob %>%
   roc_curve(mortality, value, event_level = "second")
@@ -152,6 +165,12 @@ autoplot(prec_rec_curve)
 thres <- pred_curve %>%
   mutate(sum = specificity + sensitivity) %>%
   filter(sum == max(sum)) %>%
+  select(.threshold) %>%
+  pull()
+
+thres <- prec_rec_curve %>%
+  mutate(sum = (5)*(recall * precision)/((4*precision) + recall)) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
