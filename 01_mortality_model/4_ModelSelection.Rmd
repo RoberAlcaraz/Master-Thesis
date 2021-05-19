@@ -31,7 +31,7 @@ pacman::p_load(tidymodels, workflowsets, tune, patchwork, FactoMineR, doParallel
 theme_set(theme_bw())
 
 # Models packages
-pacman::p_load(ranger, keras, tensorflow, mixOmics)
+pacman::p_load(ranger, reticulate, keras, tensorflow)
 library(tidyverse, attach.required = T)
 ```
 
@@ -46,22 +46,27 @@ insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
 insurance_train <- training(insurance_split)
 insurance_test  <- testing(insurance_split)
 
+insurance_train <- insurance_train %>%
+  filter(actuarial_age >= 21, actuarial_age <= 61) %>%
+  filter(duration <= 13)
+
 set.seed(23)
-insurance_folds <- vfold_cv(insurance_train, v = 5, 
+insurance_folds <- vfold_cv(insurance_train, v = 10, 
                             strata = mortality)
 
 basic_rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_bs(capital, deg_free = 3) %>%
   step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
-                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
-                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk)
+                  duration:sex_woman + duration:smoker_yes +
+                  IMC:sex_woman + IMC:smoker_yes +
+                  capital:sex_woman + capital:smoker_yes)
+
 ```
 
-We are going to compare the following models: gam, pls, random forest and neural networks.
+We are going to compare the following models: gam, xgboost, random forest and neural networks.
 
 ```{r}
 grid_ctrl <- control_grid(
@@ -97,40 +102,40 @@ my_metrics = metric_set(f_meas_2, recall, kap)
 
 
 ```{r}
-# PLS
-pls_rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+xgboost_rec <- 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
          data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_normalize(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_bs(capital, deg_free = 3) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>% 
+  step_novel(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
   step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
-                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
-                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk) %>%
+                  duration:sex_woman + duration:smoker_yes +
+                  IMC:sex_woman + IMC:smoker_yes +
+                  capital:sex_woman + capital:smoker_yes) %>%
   step_zv(all_predictors())
-  
-pls_model <-
-  plsmod::pls(predictor_prop = tune(), num_comp = tune()) %>%
-  set_engine('mixOmics') %>%
-  set_mode('classification')
 
-pls_wf <- 
-  workflow() %>%
-  add_recipe(pls_rec) %>%
-  add_model(pls_model)
+xgboost_model <- 
+  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
+    loss_reduction = tune(), sample_size = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("xgboost") 
+
+xgboost_wf <- 
+  workflow() %>% 
+  add_recipe(xgboost_rec) %>% 
+  add_model(xgboost_model) 
 ```
 
 ```{r}
 # Random Forest
 rf_rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_bs(capital, deg_free = 3) %>%
-  step_interact(terms = ~ actuarial_age:sex + actuarial_age:smoker +
-                  actuarial_age:IMC_factor_1 + sex:smoker +
-                  sex:IMC_factor_1 + smoker:IMC_factor_1)
+  step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
+                  duration:sex_woman + duration:smoker_yes +
+                  IMC:sex_woman + IMC:smoker_yes +
+                  capital:sex_woman + capital:smoker_yes)
 
 
 rf_model <- 
@@ -147,15 +152,15 @@ rf_wf <-
 
 ```{r}
 mlp_rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_bs(capital, deg_free = 3) %>%
   step_interact(terms = ~ actuarial_age:sex_woman + actuarial_age:smoker_yes +
-                  actuarial_age:IMC_factor_1_risk + sex_woman:smoker_yes +
-                  sex_woman:IMC_factor_1_risk + smoker_yes:IMC_factor_1_risk) %>%
+                  duration:sex_woman + duration:smoker_yes +
+                  IMC:sex_woman + IMC:smoker_yes +
+                  capital:sex_woman + capital:smoker_yes) %>%
   step_zv(all_predictors()) %>%
   step_corr(all_predictors())
 
@@ -171,9 +176,7 @@ mlp_wf <-
 ```
 
 
-
-```{r}
-# GAM
+```{r, eval=F}
 n <- nrow(insurance_folds)
 
 f2 <- seq(1, n)
@@ -218,24 +221,96 @@ t1 - t
 mean(f2)
 mean(kappa)
 mean(rec)
+```
 
-# PLS
+```{r, eval=F}
+# GAM
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  prep() %>% juice()
+
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(actuarial_age, bs = "ps", by = sex) +
+                   s(actuarial_age, bs = "ps", by = smoker) + 
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(capital, bs = "ps", by = smoker) +
+                   s(IMC, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = smoker),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = F)
+summary(gam_model)
+
+# Parametric coefficients:
+#             Estimate Std. Error z value Pr(>|z|)    
+# (Intercept) -5.38654    0.06223 -86.561  < 2e-16 ***
+# sexwoman    -0.74812    0.13388  -5.588 2.30e-08 ***
+# smokeryes    0.54753    0.09330   5.869 4.39e-09 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                                 edf  Ref.df Chi.sq  p-value    
+# s(actuarial_age)           1.005681 1.00631 16.714 4.68e-05 ***
+# s(duration)                1.021105 1.02225  0.622 0.418100    
+# s(capital)                 0.002977 0.00388  0.000 0.987560    
+# s(IMC)                     1.005848 1.00709  1.346 0.246749    
+# s(actuarial_age):sexman    8.373541 8.66309 57.856 6.69e-06 ***
+# s(actuarial_age):sexwoman  2.093462 2.34343  0.650 0.876168    
+# s(actuarial_age):smokerno  4.932823 5.35362  9.719 0.116379    
+# s(actuarial_age):smokeryes 6.603013 6.85481 20.288 0.002667 ** 
+# s(duration):sexman         0.015544 0.01865  0.000 0.984316    
+# s(duration):sexwoman       5.034767 5.85593 91.441  < 2e-16 ***
+# s(duration):smokerno       8.348065 8.70947 35.041 2.54e-05 ***
+# s(duration):smokeryes      7.340894 7.79163 96.045  < 2e-16 ***
+# s(capital):sexman          1.929669 2.21167  0.922 0.694678    
+# s(capital):sexwoman        1.834387 1.97240  2.150 0.295195    
+# s(capital):smokerno        3.937495 4.25392  8.396 0.054551 .  
+# s(capital):smokeryes       1.001030 1.00146  0.786 0.375600    
+# s(IMC):sexman              3.835707 4.45583  6.878 0.162689    
+# s(IMC):sexwoman            2.296089 2.65970 32.436 0.000696 ***
+# s(IMC):smokerno            1.001530 1.00189  1.437 0.230627    
+# s(IMC):smokeryes           1.731096 2.12627 21.909 2.18e-05 ***
+
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(actuarial_age, bs = "ps", by = sex) +
+                   s(actuarial_age, bs = "ps", by = smoker) + 
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(IMC, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = smoker),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
+```
+
+
+
+
+```{r}
+# XGBOOST
 set.seed(123)
-max_ent_pls <- grid_max_entropy(parameters(pls_wf), size = 2)
+max_ent_xgboost <- grid_max_entropy(parameters(xgboost_wf), size = 10)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(6)
+cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
-pls_wf_tune <- pls_wf %>%
+xgboost_wf_tune <- xgboost_wf %>%
   tune_grid(
     resamples = insurance_folds,
-    grid = max_ent_pls,
+    grid = max_ent_xgboost,
     control = grid_ctrl,
     metrics = my_metrics
     )
 
 stopCluster(cl)
+saveRDS(xgboost_wf_tune, "../01_mortality_model/results/xgboost_wf_tune.RDS")
 t2 <- Sys.time()
 t2 - t
 
@@ -244,9 +319,9 @@ set.seed(123)
 
 rf_param <- rf_wf %>%
   parameters() %>%
-  update(mtry = finalize(mtry(c(1, 14))))
+  update(mtry = finalize(mtry(c(1, 15))))
 
-max_ent_rf <- grid_max_entropy(rf_param, size = 5)
+max_ent_rf <- grid_max_entropy(rf_param, size = 10)
 
 t <- Sys.time()
 cl <- makePSOCKcluster(8)
@@ -261,6 +336,7 @@ rf_wf_tune <- rf_wf %>%
     verbose = T
     )
 
+saveRDS(rf_wf_tune, "../01_mortality_model/results/rf_wf_tune.RDS")
 stopCluster(cl)
 
 t3 <- Sys.time()
@@ -268,7 +344,7 @@ t3 - t
 
 
 set.seed(123)
-max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 5)
+max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 10)
 
 t <- Sys.time()
 cl <- makePSOCKcluster(8)
@@ -287,7 +363,57 @@ stopCluster(cl)
 
 t4 <- Sys.time()
 t4 - t
+
+# GAM
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  prep() %>% juice()
+
+t <- Sys.time()
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(actuarial_age, bs = "ps", by = sex) +
+                   s(actuarial_age, bs = "ps", by = smoker) + 
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(IMC, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = smoker),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
+
+t1 <- Sys.time()
+t1 - t
 ```
+
+```{r}
+autoplot(xgboost_wf_tune)
+
+xgboost_param <- xgboost_wf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "f_meas") %>%
+  arrange(desc(mean)) %>%
+  slice(1) %>%
+  dplyr::select(trees, min_n, tree_depth, learn_rate, loss_reduction, sample_size)
+
+xgboost_wf <- xgboost_wf %>%
+  finalize_workflow(xgboost_param)
+
+xgboost_final_wf <- xgboost_wf %>%
+  last_fit(insurance_split)
+
+xgboost_final_wf %>%
+  collect_metrics()
+
+xgboost_final_wf %>%
+  collect_predictions() %>%
+  conf_mat(truth = mortality,
+           estimate = .pred_class) %>%
+  summary(event_level = "second", beta = 2)
+```
+
 
 ```{r}
 mlp_param <- mlp_wf_tune %>%

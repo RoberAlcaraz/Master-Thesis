@@ -102,18 +102,7 @@ insurance_test  <- testing(insurance_split)
 - `IMC_factor_1`
 - `IMC_factor_2`
 
-### Period
 
-```{r}
-table(insurance_train$period)/nrow(insurance_train)
-
-insurance_train %>%
-  ggplot(aes(x = period)) +
-  geom_bar() 
-
-tab <- table(insurance_train$period, insurance_train$mortality)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-```
 
 ### Cover
 ```{r}
@@ -178,8 +167,6 @@ insurance_train %>%
 
 tab <- table(insurance_train$capital_factor_1, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-# since we have many cateogories, we should think about encoding it.
-
 
 table(insurance_train$capital_factor_2)/nrow(insurance_train)
 insurance_train %>%
@@ -187,7 +174,7 @@ insurance_train %>%
   geom_bar() 
 tab <- table(insurance_train$capital_factor_2, insurance_train$mortality)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-# we should convert it to dummy. Lower proportion of mortalitys in the last group
+# we should convert it to dummy. Lower proportion of mortality in the last group
 
 table(insurance_train$capital_factor_3)/nrow(insurance_train)
 insurance_train %>%
@@ -239,11 +226,31 @@ insurance_train %>%
   geom_density(alpha=.2, fill="#FF6666") 
 # seems good
 
-# sus_age
-insurance_train %>%
-  ggplot(aes(x = sus_age)) +
-  geom_histogram(aes(y=..density..), colour="black", fill="white")+
-  geom_density(alpha=.2, fill="#FF6666") 
+insurance_train$mortality = ifelse(insurance_train$mortality == "yes", 1, 0)
+
+t1 <- insurance_train %>%
+  group_by(actuarial_age) %>%
+  mutate(mortality = sum(mortality == "yes")) %>%
+  select(actuarial_age, mortality) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t2 <- insurance_train %>%
+  group_by(actuarial_age) %>%
+  mutate(exp = sum(exp)) %>%
+  select(actuarial_age, exp) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`mortality/exp` = mortality/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(actuarial_age, `mortality/exp`), alpha = 0.4)
+
+quantile(insurance_train$actuarial_age, probs = c(0.01, 0.99))
 ```
 
 ### exp
@@ -258,16 +265,34 @@ insurance_train %>%
 
 ### duration
 ```{r}
+t1 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(mortality = sum(mortality == "yes")) %>%
+  select(duration, mortality) %>%
+  distinct() %>%
+  arrange(duration)
+
+t2 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(exp = sum(exp)) %>%
+  select(duration, exp) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`mortality/exp` = mortality/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, `mortality/exp`), alpha = 0.4)
+
 insurance_train %>%
   ggplot(aes(x = duration)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
-  geom_density(alpha=.2, fill="#FF6666") 
-
-# duration_cat
-insurance_train %>%
-  ggplot(aes(x = duration_cat)) +
-  geom_histogram(aes(y=..density..), colour="black", fill="white")+
-  geom_density(alpha=.2, fill="#FF6666") 
+  geom_density(alpha=.2, fill="#FF6666")
 ```
 ### Capital
 ```{r}

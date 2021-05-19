@@ -83,7 +83,7 @@ rfe_model <- rand_forest() %>%
 # Predictive model for the deaths
 set.seed(1234)
 select_rec <- 
-  recipe(lapse ~ period + cover + sex + smoker + good_health +
+  recipe(lapse ~ cover + sex + smoker + good_health +
                    actuarial_age + duration + capital + IMC,
          data = lapse_train) %>%
   step_select_vip(all_predictors(), outcome = "lapse", model = rfe_model, top_p = 7)
@@ -98,7 +98,7 @@ new_data
 ## GAM models
 
 ```{r}
-gam_model <- gam(lapse ~ period + cover + sex + smoker + good_health +
+gam_model <- gam(lapse ~ cover + sex + smoker + good_health +
                    s(actuarial_age) + s(duration) + s(capital) + s(IMC),
                  data = lapse_train, family = "binomial")
 summary(gam_model)
