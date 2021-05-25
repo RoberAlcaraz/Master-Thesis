@@ -609,7 +609,7 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(capital, bs = "ps", by = sex) +
                    s(IMC, bs = "ps", by = sex),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
-# saveRDS(gam_model, "../01_mortality_model/results/gam_model_mortality.RDS")
+# saveRDS(gam_model, "../01_mortality_model/results_mortality/gam_model_mortality.RDS")
 t1 <- Sys.time()
 t1 - t
 summary(gam_model)
@@ -659,7 +659,7 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(IMC, bs = "ps", by = sex) +
                    s(IMC, bs = "ps", by = smoker),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
-gam_model <- readRDS("../01_mortality_model/results/gam_model_mortality.RDS")
+gam_model <- readRDS("../01_mortality_model/results_mortality/gam_model_mortality.RDS")
 summary(gam_model)
 ```
 
@@ -809,7 +809,7 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(IMC, bs = "ps", by = sex),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 summary(gam_model)
-# saveRDS(gam_model, "../01_mortality_model/results/gam_model.RDS")
+# saveRDS(gam_model, "../01_mortality_model/results_mortality/gam_model.RDS")
 
 # Parametric coefficients:
 #             Estimate Std. Error  z value Pr(>|z|)    

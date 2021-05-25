@@ -244,7 +244,7 @@ xgboost_wf_tune <- xgboost_wf %>%
     )
 
 stopCluster(cl)
-saveRDS(xgboost_wf_tune, "../01_mortality_model/results/xgboost_wf_tune.RDS")
+saveRDS(xgboost_wf_tune, "../01_mortality_model/results_mortality/xgboost_wf_tune.RDS")
 t3 <- Sys.time()
 t3 - t
 # Time difference of 4.086126 hours
@@ -270,7 +270,7 @@ rf_wf_tune <- rf_wf %>%
     metrics = my_metrics
     )
 
-saveRDS(rf_wf_tune, "../01_mortality_model/results/rf_wf_tune.RDS")
+saveRDS(rf_wf_tune, "../01_mortality_model/results_mortality/rf_wf_tune.RDS")
 stopCluster(cl)
 
 t4 <- Sys.time()
@@ -294,7 +294,7 @@ mlp_wf_tune <- mlp_wf %>%
     )
 
 stopCluster(cl)
-saveRDS(mlp_wf_tune, "../01_mortality_model/results/mlp_wf_tune.RDS")
+saveRDS(mlp_wf_tune, "../01_mortality_model/results_mortality/mlp_wf_tune.RDS")
 t5 <- Sys.time()
 t5 - t
 ```
