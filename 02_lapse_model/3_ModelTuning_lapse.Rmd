@@ -49,7 +49,7 @@ lapse_train <- training(lapse_split)
 lapse_test  <- testing(lapse_split)
 
 set.seed(23)
-insurance_folds <- vfold_cv(lapse_train, v = 5,
+lapse_folds <- vfold_cv(lapse_train, v = 5,
                             strata = lapse)
 
 basic_rec <- 
@@ -87,10 +87,10 @@ f_meas_2 <- new_class_metric(f_meas_2, direction = "maximize")
 # It works
 # prob %>%
 #     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
-#     f_meas(mortality, pred_class, beta = 2, event_level = "second")
+#     f_meas(lapse, pred_class, beta = 2, event_level = "second")
 # prob %>%
 #     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
-#     f_meas_2(mortality, pred_class)
+#     f_meas_2(lapse, pred_class)
 
 my_metrics = metric_set(f_meas_2, recall, kap)
 ```
@@ -164,5 +164,126 @@ mlp_wf <-
 
 # Parameter tuning
 
+```{r}
+# GAM
+n <- nrow(lapse_folds)
+
+f2 <- seq(1, n)
+kappa <- seq(1, n)
+rec <- seq(1, n)
+t <- Sys.time()
+
+for (i in 1:n){
+  
+  analysis_data <- analysis(lapse_folds$splits[[i]])
+  analysis_data <- 
+    recipe(lapse ~ sex + actuarial_age + duration + capital + IMC,
+           data = analysis_data) %>%
+    step_log(capital, IMC, base = 10) %>% 
+    prep() %>% juice()
+  
+  validation_data <- assessment(lapse_folds$splits[[i]])
+  
+  gam_model_lapse <- gam(lapse ~ sex +
+                         s(actuarial_age, bs = "ps", by = sex) +
+                         s(duration, bs = "ps", by = sex) +
+                         s(capital, bs = "ps", by = sex) + 
+                         s(IMC, bs = "ps", by = sex),
+                       data = analysis_data, 
+                       family = "binomial", 
+                       method = "REML", select = T)
+  
+  prob <- predict(gam_model_lapse, newdata = validation_data, type = "response")
+
+  prob <- as_tibble(prob) %>%
+    mutate(lapse = validation_data$lapse)
+  
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > 0.03884555, "yes", "no"))) %>%
+    conf_mat(truth = lapse, estimate = pred_class)
+  
+  f2[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "f_meas") %>% dplyr::select(.estimate) %>% pull()
+  kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% dplyr::select(.estimate) %>% pull()
+  rec[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "recall") %>% dplyr::select(.estimate) %>% pull()
+}
+t1 <- Sys.time()
+t1 - t
+
+mean(f2)
+mean(kappa)
+mean(rec)
+
+# XGBOOST
+set.seed(123)
+max_ent_xgboost <- grid_max_entropy(parameters(xgboost_wf), size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+xgboost_wf_tune <- xgboost_wf %>%
+  tune_grid(
+    resamples = lapse_folds,
+    grid = max_ent_xgboost,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+stopCluster(cl)
+saveRDS(xgboost_wf_tune, "../02_lapse_model/results_lapse/xgboost_wf_tune.RDS")
+t3 <- Sys.time()
+t3 - t
+
+# Random Forest
+set.seed(123)
+
+rf_param <- rf_wf %>%
+  parameters() %>%
+  update(mtry = finalize(mtry(c(1, 10))))
+
+max_ent_rf <- grid_max_entropy(rf_param, size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+rf_wf_tune <- rf_wf %>%
+  tune_grid(
+    resamples = lapse_folds,
+    grid = max_ent_rf,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+saveRDS(rf_wf_tune, "../02_lapse_model/results_lapse/rf_wf_tune.RDS")
+stopCluster(cl)
+
+t4 <- Sys.time()
+t4 - t
+
+
+set.seed(123)
+max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 10)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+mlp_wf_tune <- mlp_wf %>%
+  tune_grid(
+    resamples = lapse_folds,
+    grid = max_ent_mlp,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+stopCluster(cl)
+saveRDS(mlp_wf_tune, "../02_lapse_model/results_lapse/mlp_wf_tune.RDS")
+t5 <- Sys.time()
+t5 - t
+```
 
 

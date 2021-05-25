@@ -216,7 +216,8 @@ plot(gam_model_lapse, ylim = c(-2,2))
 # s(IMC):sexman             3.67104      8    41.994  < 2e-16 ***
 # s(IMC):sexwoman           1.67353      9    11.970 0.000729 ***
 
-saveRDS(gam_model_lapse, "../02_lapse_model/results_lapse/gam_model_lapse.RDS")
+# saveRDS(gam_model_lapse, "../02_lapse_model/results_lapse/gam_model_lapse.RDS")
+gam_model_lapse <- readRDS("../02_lapse_model/results_lapse/gam_model_lapse.RDS")
 ```
 
 ```{r}
