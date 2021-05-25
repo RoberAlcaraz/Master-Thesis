@@ -311,6 +311,30 @@ insurance_train %>%
   geom_density(alpha=.2, fill="#FF6666") +
   scale_x_log10()
 # here we have some outliers. We should take it into account.
+
+t1 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(mortality = sum(mortality == "yes")) %>%
+  select(duration, mortality) %>%
+  distinct() %>%
+  arrange(duration)
+
+t2 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(exp = sum(exp)) %>%
+  select(duration, exp) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`mortality/exp` = mortality/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, `mortality/exp`), alpha = 0.4)
 ```
 
 
@@ -330,6 +354,30 @@ insurance_train %>%
   scale_x_log10()
 
 # Some outliers too
+
+t1 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(mortality = sum(mortality == "yes")) %>%
+  select(duration, mortality) %>%
+  distinct() %>%
+  arrange(duration)
+
+t2 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(exp = sum(exp)) %>%
+  select(duration, exp) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`mortality/exp` = mortality/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, `mortality/exp`), alpha = 0.4)
 ```
 
 ```{r}

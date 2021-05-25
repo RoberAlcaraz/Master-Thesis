@@ -242,6 +242,33 @@ lapse_train %>%
   geom_density(alpha=.2, fill="#FF6666") 
 ```
 
+```{r}
+t1 <- lapse_train %>%
+  group_by(actuarial_age) %>%
+  mutate(lapse = sum(lapse == "yes")) %>%
+  select(actuarial_age, lapse) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t2 <- lapse_train %>%
+  group_by(actuarial_age) %>%
+  mutate(exp = sum(exp)) %>%
+  select(actuarial_age, exp) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`lapse/exp` = lapse/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(actuarial_age, `lapse/exp`), alpha = 0.4)
+
+quantile(lapse_train$actuarial_age, probs = c(0.01, 0.99))
+```
+
+
 ### exp
 
 ```{r}
@@ -261,6 +288,29 @@ lapse_train %>%
 
 # Very significant
 
+t1 <- lapse_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(lapse = sum(lapse == "yes")) %>%
+  select(duration, lapse) %>%
+  distinct() %>%
+  arrange(duration)
+
+t2 <- lapse_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(exp = sum(exp)) %>%
+  select(duration, exp) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`lapse/exp` = lapse/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, `lapse/exp`), alpha = 0.4)
 ```
 ### Capital
 ```{r}
@@ -279,6 +329,30 @@ lapse_train %>%
   geom_density(alpha=.2, fill="#FF6666") +
   scale_x_log10()
 # here we have some outliers. We should take it into account.
+
+t1 <- lapse_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  mutate(lapse = sum(lapse == "yes")) %>%
+  select(capital, lapse) %>%
+  distinct() %>%
+  arrange(capital)
+
+t2 <- lapse_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  mutate(exp = sum(exp)) %>%
+  select(capital, exp) %>%
+  distinct() %>%
+  arrange(capital)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`lapse/exp` = lapse/exp)
+
+t %>%
+  ggplot() +
+  geom_point(aes(capital, `lapse/exp`), alpha = 0.4)
 ```
 
 

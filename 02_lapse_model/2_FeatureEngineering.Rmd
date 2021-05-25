@@ -38,9 +38,10 @@ pacman::p_load(ranger)
 ```{r}
 lapse_data <- readRDS("../00_data/insurance_lapse.RDS")
 lapse_data$lapse <- as.factor(lapse_data$lapse)
-```
 
-```{r}
+lapse_data <- lapse_data %>%
+  filter(actuarial_age >= 21, actuarial_age <= 61)
+
 set.seed(123)
 
 lapse_split <- initial_split(lapse_data, prop = 0.7, strata = lapse)
@@ -86,7 +87,8 @@ select_rec <-
   recipe(lapse ~ cover + sex + smoker + good_health +
                    actuarial_age + duration + capital + IMC,
          data = lapse_train) %>%
-  step_select_vip(all_predictors(), outcome = "lapse", model = rfe_model, top_p = 7)
+  step_log(capital, IMC, base = 10) %>%
+  step_select_vip(all_predictors(), outcome = "lapse", model = rfe_model, top_p = 6)
 
 new_data <- select_rec %>% prep() %>% juice()
 new_data
@@ -98,79 +100,194 @@ new_data
 ## GAM models
 
 ```{r}
-gam_model <- gam(lapse ~ cover + sex + smoker + good_health +
-                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
-                 data = lapse_train, family = "binomial")
-summary(gam_model)
+lapse_train_prep <- 
+  recipe(lapse ~ cover + sex +
+                   actuarial_age + duration + capital + IMC,
+         data = lapse_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  prep() %>% juice()
+
+gam_model_lapse <- gam(lapse ~ cover + sex +
+                         s(actuarial_age, bs = "ps") +
+                         s(duration, bs = "ps") +
+                         s(capital, bs = "ps") + 
+                         s(IMC, bs = "ps"),
+                       data = lapse_train_prep, 
+                       family = "binomial", 
+                       method = "REML", select = F)
+summary(gam_model_lapse)
 
 # Parametric coefficients:
-#                Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)    -1.62112    0.04886 -33.179   <2e-16 ***
-# period2011      0.01432    0.01274   1.123   0.2613    
-# period2012      0.73408    0.01230  59.663   <2e-16 ***
-# cover2         -0.05201    0.02261  -2.300   0.0215 *  
-# cover3         -0.02099    0.01781  -1.178   0.2386    
-# sexwoman       -0.14673    0.01227 -11.955   <2e-16 ***
-# smokeryes       0.11472    0.01373   8.358   <2e-16 ***
-# good_healthyes -0.03360    0.04912  -0.684   0.4939    
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Approximate significance of smooth terms:
-#                    edf Ref.df   Chi.sq  p-value    
-# s(actuarial_age) 8.446  8.858   383.14  < 2e-16 ***
-# s(duration)      8.969  8.999 27571.25  < 2e-16 ***
-# s(capital)       7.230  8.188   141.56  < 2e-16 ***
-# s(IMC)           4.657  5.669    40.29 2.22e-06 ***
-
-
-gam_model <- gam(lapse ~ period + cover + sex + smoker +
-                   s(actuarial_age) + s(duration) + s(capital) + s(IMC),
-                 data = lapse_train, family = "binomial")
-summary(gam_model)
-
-# Parametric coefficients:
-#             Estimate Std. Error  z value Pr(>|z|)    
-# (Intercept) -1.65361    0.01106 -149.530   <2e-16 ***
-# period2011   0.01427    0.01274    1.119   0.2630    
-# period2012   0.73399    0.01230   59.659   <2e-16 ***
-# cover2      -0.05196    0.02261   -2.298   0.0216 *  
-# cover3      -0.02096    0.01781   -1.177   0.2393    
-# sexwoman    -0.14713    0.01226  -11.997   <2e-16 ***
-# smokeryes    0.11476    0.01373    8.361   <2e-16 ***
+#              Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -1.378091   0.007555 -182.407   <2e-16 ***
+# cover2      -0.035181   0.022494   -1.564    0.118    
+# cover3      -0.018802   0.017630   -1.066    0.286    
+# sexwoman    -0.138772   0.012218  -11.358   <2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
 #                    edf Ref.df   Chi.sq p-value    
-# s(actuarial_age) 8.447  8.858   383.08  <2e-16 ***
-# s(duration)      8.969  8.999 27653.30  <2e-16 ***
-# s(capital)       7.229  8.187   141.37  <2e-16 ***
-# s(IMC)           4.645  5.642    49.06  <2e-16 ***
+# s(actuarial_age) 7.000  7.255   339.63  <2e-16 ***
+# s(duration)      8.720  8.923 29401.84  <2e-16 ***
+# s(capital)       4.304  4.917    70.14  <2e-16 ***
+# s(IMC)           3.742  4.296    50.58  <2e-16 ***
+
+gam_model_lapse <- gam(lapse ~ sex +
+                         s(actuarial_age, bs = "ps") +
+                         s(duration, bs = "ps") +
+                         s(capital, bs = "ps") + 
+                         s(IMC, bs = "ps"),
+                       data = lapse_train_prep, 
+                       family = "binomial", 
+                       method = "REML", select = T)
+summary(gam_model_lapse)
+
+# Parametric coefficients:
+#              Estimate Std. Error z value Pr(>|z|)    
+# (Intercept) -1.381073   0.007145 -193.31   <2e-16 ***
+# sexwoman    -0.139345   0.012203  -11.42   <2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# R-sq.(adj) =  0.185   Deviance explained = 13.3%
-# UBRE = -0.074846  Scale est. = 1         n = 264127
+# Approximate significance of smooth terms:
+#                    edf Ref.df   Chi.sq p-value    
+# s(actuarial_age) 7.154      9   345.25  <2e-16 ***
+# s(duration)      7.996      9 29632.71  <2e-16 ***
+# s(capital)       3.459      9    69.72  <2e-16 ***
+# s(IMC)           3.214      9    50.57  <2e-16 ***
+# ---
 ```
 
 ```{r}
-prob <- predict(gam_model, newdata = lapse_train, 
+gam_model_lapse <- gam(lapse ~ sex +
+                         s(actuarial_age, bs = "ps", by = sex) +
+                         s(duration, bs = "ps", by = sex) +
+                         s(capital, bs = "ps", by = sex) + 
+                         s(IMC, bs = "ps", by = sex),
+                       data = lapse_train_prep, 
+                       family = "binomial", 
+                       method = "REML", select = F)
+summary(gam_model_lapse)
+
+# Parametric coefficients:
+#              Estimate Std. Error z value Pr(>|z|)    
+# (Intercept) -1.366420   0.008246  -165.7   <2e-16 ***
+# sexwoman    -0.159035   0.013592   -11.7   <2e-16 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                             edf Ref.df    Chi.sq  p-value    
+# s(actuarial_age):sexman   6.819  7.106   227.246  < 2e-16 ***
+# s(actuarial_age):sexwoman 6.722  7.052   102.746  < 2e-16 ***
+# s(duration):sexman        8.656  8.884 17861.417  < 2e-16 ***
+# s(duration):sexwoman      8.482  8.740 11873.452  < 2e-16 ***
+# s(capital):sexman         4.048  4.697    95.035  < 2e-16 ***
+# s(capital):sexwoman       1.014  1.029     0.915 0.345318    
+# s(IMC):sexman             3.398  4.013    42.964  < 2e-16 ***
+# s(IMC):sexwoman           3.143  3.681    21.531 0.000322 ***
+
+gam_model_lapse <- gam(lapse ~ sex +
+                         s(actuarial_age, bs = "ps", by = sex) +
+                         s(duration, bs = "ps", by = sex) +
+                         s(capital, bs = "ps", by = sex) + 
+                         s(IMC, bs = "ps", by = sex),
+                       data = lapse_train_prep, 
+                       family = "binomial", 
+                       method = "REML", select = T)
+summary(gam_model_lapse)
+plot(gam_model_lapse, ylim = c(-2,2))
+# Parametric coefficients:
+#              Estimate Std. Error z value Pr(>|z|)    
+# (Intercept) -1.365463   0.008347 -163.59   <2e-16 ***
+# sexwoman    -0.172170   0.013613  -12.65   <2e-16 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                               edf Ref.df    Chi.sq  p-value    
+# s(actuarial_age):sexman   6.86196      9   163.275  < 2e-16 ***
+# s(actuarial_age):sexwoman 5.49861      9    50.217  < 2e-16 ***
+# s(duration):sexman        7.98644      9 17728.502  < 2e-16 ***
+# s(duration):sexwoman      7.96828      9 11852.947  < 2e-16 ***
+# s(capital):sexman         3.30700      9    96.969  < 2e-16 ***
+# s(capital):sexwoman       0.02866      7     0.001 0.960642    
+# s(IMC):sexman             3.67104      8    41.994  < 2e-16 ***
+# s(IMC):sexwoman           1.67353      9    11.970 0.000729 ***
+
+saveRDS(gam_model_lapse, "../02_lapse_model/results/gam_model_lapse.RDS")
+```
+
+```{r}
+# Best threshold for kappa
+prob <- predict(gam_model_lapse, newdata = lapse_train_prep, 
                 type = "response")
 
 prob <- as_tibble(prob) %>%
   mutate(lapse = lapse_train$lapse)
 
-pred_curve <- prob %>%
+roc_c <- prob %>%
   roc_curve(lapse, value, event_level = "second")
 
-thres <- pred_curve %>%
-  mutate(sum = specificity + sensitivity) %>%
-  filter(sum == max(sum)) %>%
+thresholds <- roc_c %>% select(.threshold) %>% pull()
+thresholds <- quantile(thresholds, probs = seq(0.74, 0.76, 0.0001))
+
+thresholds <- roc_c %>% select(.threshold) %>% pull()
+length(which(thresholds <= 0.3272755))
+thresholds <- thresholds[(193334-100):(193334+100)]
+kappa <- seq(1, length(thresholds))
+
+for (i in 1:length(thresholds)){
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > thresholds[i],
+                                         "yes", "no"))) %>%
+    conf_mat(truth = lapse,
+             estimate = pred_class)
+  
+  kappa[i] <- confusion_matrix %>% 
+    summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% 
+    dplyr::select(.estimate) %>% 
+    pull()
+}
+which.max(kappa)
+thresholds[104] # 0.3272862
+confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > thresholds[104],
+                                         "yes", "no"))) %>%
+    conf_mat(truth = lapse,
+             estimate = pred_class)
+confusion_matrix
+confusion_matrix %>% 
+    summary(event_level = "second") 
+
+plot(kappa)
+```
+
+
+```{r}
+# Best threshold for F1
+prob <- predict(gam_model_lapse, newdata = lapse_train_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(lapse = lapse_train$lapse)
+
+prec_rec_curve <- prob %>%
+  pr_curve(lapse, value, event_level = "second")
+
+autoplot(prec_rec_curve)
+
+beta <- 1
+thres <- prec_rec_curve %>%
+  mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
-# thres <- 0.3487676
+
+# thres <- 0.239206
 confusion_matrix <- prob %>%
   mutate(pred_class = as.factor(ifelse(value > thres,
                                        "yes", "no"))) %>%
@@ -183,273 +300,36 @@ confusion_matrix %>%
 
 prob %>%
   roc_auc(lapse, value, event_level = "second")
-autoplot(pred_curve)
-```
-
-
-
-## Interaction terms
-
-```{r}
-lapse_train_yes <- lapse_train %>%
-  filter(lapse == "yes")
-
-lapse_train_no <- lapse_train %>%
-  filter(lapse == "no")
 ```
 
 ```{r}
-# Interactions between the categorical variables:
-## Period and cover YES
-lapse_train %>%
-  ggplot(aes(x = period, fill = cover)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
+# Best threshold for max(sensitivity + specificity)
 
-print("LAPSE: NO")
-tab <- table(lapse_train_no$period, lapse_train_no$cover)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$period, lapse_train_yes$cover)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-## Period and sex YES
-lapse_train %>%
-  ggplot(aes(x = period, fill = sex)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$period, lapse_train_no$sex)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$period, lapse_train_yes$sex)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-## Period and smoker YES
-lapse_train %>%
-  ggplot(aes(x = period, fill = smoker)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$period, lapse_train_no$smoker)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$period, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# Sex and smoker YES
-lapse_train %>%
-  ggplot(aes(x = sex, fill = smoker)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$sex, lapse_train_no$smoker)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$sex, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# cover and sex
-lapse_train %>%
-  ggplot(aes(x = cover, fill = sex)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$cover, lapse_train_no$sex)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$cover, lapse_train_yes$sex)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# cover and smoker
-lapse_train %>%
-  ggplot(aes(x = cover, fill = smoker)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$cover, lapse_train_no$smoker)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$cover, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# Sex and smoker
-lapse_train %>%
-  ggplot(aes(x = sex, fill = smoker)) +
-  geom_bar(position = "dodge") +
-  facet_wrap(~lapse) 
-
-print("LAPSE: NO")
-tab <- table(lapse_train_no$sex, lapse_train_no$smoker)*100/nrow(lapse_train_no)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-print("LAPSE: YES")
-tab <- table(lapse_train_yes$sex, lapse_train_yes$smoker)*100/nrow(lapse_train_yes)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-```
-
-
-```{r}
-# Interactions between actuarial_age and the categorical variables:
-a <- lapse_train %>%
-  ggplot(aes(x = actuarial_age, color = sex, fill = sex)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-b <- lapse_train %>%
-  ggplot(aes(x = actuarial_age, color = smoker, fill = smoker)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-c <- lapse_train %>%
-  ggplot(aes(x = actuarial_age, color = good_health, fill = good_health)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-d <- lapse_train %>%
-  ggplot(aes(x = actuarial_age, color = IMC_factor_1, fill = IMC_factor_1)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-
-a / b / c / d
-```
-
-```{r}
-# Interactions between duration and the categorical variables:
-a <- lapse_train %>%
-  ggplot(aes(x = duration, color = sex, fill = sex)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-b <- lapse_train %>%
-  ggplot(aes(x = duration, color = smoker, fill = smoker)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-c <- lapse_train %>%
-  ggplot(aes(x = duration, color = good_health, fill = good_health)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-d <- lapse_train %>%
-  ggplot(aes(x = duration, color = IMC_factor_1, fill = IMC_factor_1)) +
-  geom_density(alpha = 0.4)+
-  facet_wrap(~lapse) 
-
-a / b / c / d
-```
-
-```{r}
-inter_model <- glm(lapse ~ period + cover + sex + smoker +
-                   actuarial_age + duration + capital + IMC + (period + cover + sex + smoker)^2,
-                 data = lapse_train, family = "binomial")
-
-# Coefficients:
-#                        Estimate Std. Error  z value Pr(>|z|)    
-# (Intercept)          -2.243e-01  5.423e-02   -4.136 3.53e-05 ***
-# period2011           -8.505e-02  1.747e-02   -4.868 1.13e-06 ***
-# period2012            7.757e-01  1.669e-02   46.473  < 2e-16 ***
-# cover2               -1.314e-01  4.548e-02   -2.888 0.003874 ** 
-# cover3                9.620e-02  3.283e-02    2.930 0.003387 ** 
-# sexwoman             -2.997e-01  1.973e-02  -15.189  < 2e-16 ***
-# smokeryes             2.481e-01  2.419e-02   10.258  < 2e-16 ***
-# actuarial_age        -1.285e-03  5.668e-04   -2.267 0.023390 *  
-# duration             -2.437e-01  1.960e-03 -124.389  < 2e-16 ***
-# capital              -9.015e-07  9.791e-08   -9.208  < 2e-16 ***
-# IMC                  -7.016e-03  2.143e-03   -3.274 0.001059 ** 
-# period2011:cover2     1.403e-02  5.612e-02    0.250 0.802527    
-# period2012:cover2    -2.952e-03  5.283e-02   -0.056 0.955434    
-# period2011:cover3     1.482e-02  4.186e-02    0.354 0.723336    
-# period2012:cover3    -3.773e-01  4.142e-02   -9.110  < 2e-16 ***
-# period2011:sexwoman   8.463e-02  2.567e-02    3.298 0.000975 ***
-# period2012:sexwoman   2.332e-01  2.435e-02    9.577  < 2e-16 ***
-# period2011:smokeryes  5.584e-02  3.159e-02    1.767 0.077154 .  
-# period2012:smokeryes -6.358e-01  3.203e-02  -19.850  < 2e-16 ***
-# cover2:sexwoman       1.681e-01  4.420e-02    3.803 0.000143 ***
-# cover3:sexwoman       6.680e-02  3.671e-02    1.820 0.068823 .  
-# cover2:smokeryes      9.057e-02  5.768e-02    1.570 0.116341    
-# cover3:smokeryes      7.225e-02  4.259e-02    1.696 0.089816 .  
-# sexwoman:smokeryes    1.911e-02  2.768e-02    0.690 0.489984    
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-inter_model <- glm(lapse ~ period + cover + sex + smoker +
-                   actuarial_age + duration + capital + IMC + (period + cover + sex + smoker)^2 - sex:smoker,
-                 data = lapse_train, family = "binomial")
-summary(inter_model)
-```
-
-Now, we repeat the process:
-
-```{r}
-gam_model <- gam(lapse ~ period + cover + sex + smoker +
-                   s(actuarial_age) + s(duration) + s(capital) + s(IMC) + (period + cover + sex + smoker)^2 - sex:smoker - cover:smoker,
-                 data = lapse_train, family = "binomial")
-summary(gam_model)
-
-# Parametric coefficients:
-#                       Estimate Std. Error  z value Pr(>|z|)    
-# (Intercept)          -1.668622   0.013323 -125.239  < 2e-16 ***
-# period2011           -0.005343   0.018069   -0.296  0.76746    
-# period2012            0.799485   0.017376   46.010  < 2e-16 ***
-# cover2               -0.112046   0.045055   -2.487  0.01289 *  
-# cover3                0.093212   0.031967    2.916  0.00355 ** 
-# sexwoman             -0.271162   0.020134  -13.468  < 2e-16 ***
-# smokeryes             0.356736   0.022335   15.972  < 2e-16 ***
-# period2011:cover2     0.007901   0.057660    0.137  0.89100    
-# period2012:cover2    -0.017057   0.054441   -0.313  0.75405    
-# period2011:cover3     0.007662   0.042756    0.179  0.85778    
-# period2012:cover3    -0.401171   0.042433   -9.454  < 2e-16 ***
-# period2011:sexwoman   0.052921   0.026461    2.000  0.04550 *  
-# period2012:sexwoman   0.248670   0.025211    9.864  < 2e-16 ***
-# period2011:smokeryes  0.024249   0.032396    0.749  0.45414    
-# period2012:smokeryes -0.749433   0.033019  -22.697  < 2e-16 ***
-# cover2:sexwoman       0.143591   0.045597    3.149  0.00164 ** 
-# cover3:sexwoman       0.065737   0.037694    1.744  0.08117 .  
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Approximate significance of smooth terms:
-#                    edf Ref.df   Chi.sq p-value    
-# s(actuarial_age) 8.462  8.865   398.75  <2e-16 ***
-# s(duration)      8.973  9.000 27812.00  <2e-16 ***
-# s(capital)       7.179  8.147   139.03  <2e-16 ***
-# s(IMC)           4.670  5.668    48.42  <2e-16 ***
-```
-
-```{r}
-prob <- predict(gam_model, newdata = lapse_train, 
+prob <- predict(gam_model_lapse, newdata = lapse_train_prep, 
                 type = "response")
 
 prob <- as_tibble(prob) %>%
   mutate(lapse = lapse_train$lapse)
 
-pred_curve <- prob %>%
+roc_c <- prob %>%
   roc_curve(lapse, value, event_level = "second")
 
-thres <- pred_curve %>%
-  mutate(sum = specificity + sensitivity) %>%
-  filter(sum == max(sum)) %>%
+thres <- roc_c %>%
+  mutate(sum = sensitivity + specificity) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
-# thres <- 0.3343441
+# thres <- 0.2232829
 confusion_matrix <- prob %>%
   mutate(pred_class = as.factor(ifelse(value > thres,
                                        "yes", "no"))) %>%
   conf_mat(truth = lapse,
            estimate = pred_class)
-
 confusion_matrix
+
+
 confusion_matrix %>%
   summary(event_level = "second")
-
-prob %>%
-  roc_auc(lapse, value, event_level = "second")
-autoplot(pred_curve)
 ```
-
-
-
-# Preprocessing steps:
-
-After seeing some description of the variables, their effect on the model and their interactions, the preprocessing steps we are going to follow are:
 

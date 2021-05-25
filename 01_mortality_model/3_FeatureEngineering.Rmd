@@ -39,16 +39,16 @@ pacman::p_load(ranger)
 ```{r}
 insurance <- readRDS("../00_data/insurance.RDS")
 
+insurance <- insurance %>%
+  filter(actuarial_age >= 21, actuarial_age <= 61) %>%
+  filter(duration <= 13)
+
 
 set.seed(123)
 
 insurance_split <- initial_split(insurance, prop = 0.7, strata = mortality)
 insurance_train <- training(insurance_split)
 insurance_test  <- testing(insurance_split)
-
-insurance_train <- insurance_train %>%
-  filter(actuarial_age >= 21, actuarial_age <= 61) %>%
-  filter(duration <= 13)
 ```
 
 
@@ -75,6 +75,7 @@ select_rec <-
                    actuarial_age + duration + capital + IMC,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
+  step_log(capital, IMC, base = 10) %>%
   step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 6)
 
 new_data <- select_rec %>% prep() %>% juice()
@@ -93,6 +94,7 @@ insurance_train_prep <-
                    actuarial_age + duration + capital + IMC,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_log(capital, IMC, base = 10) %>%
   prep() %>% juice()
 
 # Here we test if they are non-linear or not
@@ -103,24 +105,19 @@ gam_model <- gam(mortality ~ sex + smoker +
 summary(gam_model)
 
 # Parametric coefficients:
-#             Estimate Std. Error z value Pr(>|z|)    
-# (Intercept) -5.02743    0.03668 -137.06   <2e-16 ***
-# sexwoman    -0.59497    0.05519  -10.78   <2e-16 ***
-# smokeryes    0.60302    0.04389   13.74   <2e-16 ***
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -4.90664    0.03579 -137.079   <2e-16 ***
+# sexwoman    -0.87869    0.05866  -14.978   <2e-16 ***
+# smokeryes    0.40954    0.04573    8.955   <2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#                    edf Ref.df  Chi.sq p-value    
-# s(actuarial_age) 7.075  7.713 1726.72 < 2e-16 ***
-# s(duration)      8.158  8.614  110.88 < 2e-16 ***
-# s(capital)       4.029  4.320  121.62 < 2e-16 ***
-# s(IMC)           4.097  4.682   21.78 0.00143 ** 
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# R-sq.(adj) =  0.0156   Deviance explained = 9.81%
-# -REML =  13114  Scale est. = 1         n = 260597
+#                    edf Ref.df Chi.sq p-value    
+# s(actuarial_age) 3.629  4.358 2008.4  <2e-16 ***
+# s(duration)      6.851  7.473  154.8  <2e-16 ***
+# s(capital)       7.520  7.885  139.6  <2e-16 ***
+# s(IMC)           6.413  6.791  153.6  <2e-16 ***
 
 # And here, if they should be in the model
 gam_model2 <- gam(mortality ~ sex + smoker +
@@ -129,59 +126,32 @@ gam_model2 <- gam(mortality ~ sex + smoker +
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 summary(gam_model2)
 
+
 # Parametric coefficients:
-#             Estimate Std. Error z value Pr(>|z|)    
-# (Intercept) -5.03351    0.03661 -137.48   <2e-16 ***
-# sexwoman    -0.59054    0.05324  -11.09   <2e-16 ***
-# smokeryes    0.60497    0.04388   13.79   <2e-16 ***
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -4.87503    0.03456 -141.054   <2e-16 ***
+# sexwoman    -0.89695    0.05831  -15.382   <2e-16 ***
+# smokeryes    0.40570    0.04572    8.874   <2e-16 ***
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#                    edf Ref.df  Chi.sq  p-value    
-# s(actuarial_age) 7.176      9 1728.36  < 2e-16 ***
-# s(duration)      8.052      9  105.19  < 2e-16 ***
-# s(capital)       4.086      8  122.91  < 2e-16 ***
-# s(IMC)           1.249      9   10.58 0.000872 ***
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# R-sq.(adj) =  0.0156   Deviance explained = 9.77%
-# -REML =  13130  Scale est. = 1         n = 260597
+#                    edf Ref.df  Chi.sq p-value    
+# s(actuarial_age) 3.640      9 2010.85  <2e-16 ***
+# s(duration)      7.471      9  167.82  <2e-16 ***
+# s(capital)       7.096      9  143.33  <2e-16 ***
+# s(IMC)           4.633      9   93.78  <2e-16 ***
 
-plot(gam_model2, ylim = c(-10, 10))
+plot(gam_model2, ylim = c(-5, 5))
 ```
 
 
-```{r}
-prob <- predict(gam_model2, newdata = insurance_train_prep, type = "response")
 
-prob <- as_tibble(prob) %>%
-  mutate(mortality = insurance_train_prep$mortality)
-
-prec_rec_curve <- prob %>%
-  pr_curve(mortality, value, event_level = "second")
-
-thres <- prec_rec_curve %>%
-  mutate(sum = (5)*(recall * precision)/((4*precision) + recall)) %>%
-  filter(sum == max(sum, na.rm = T)) %>%
-  select(.threshold) %>%
-  pull()
-
-# 0.03055535
-confusion_matrix <- prob %>%
-  mutate(pred_class = as.factor(ifelse(value > thres,
-                                       "yes", "no"))) %>%
-  conf_mat(truth = mortality,
-           estimate = pred_class)
-
-confusion_matrix %>%
-  summary(event_level = "second", beta = 2)
-```
 
 # With interactions:
 
 ```{r}
+# actuarial age with sex
 t1 <- insurance_train %>%
   group_by(actuarial_age) %>%
   mutate(
@@ -231,11 +201,445 @@ t %>%
 ```
 
 ```{r}
+# actuarial_age with smoker
+t1 <- insurance_train %>%
+  group_by(actuarial_age) %>%
+  mutate(
+    mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
+    mortality_nonsmoker = sum(mortality == "yes" & smoker == "no"),
+    ) %>%
+  select(actuarial_age, mortality_smoker, mortality_nonsmoker) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t_yes <- insurance_train %>%
+  group_by(actuarial_age) %>%
+  filter(smoker == "yes") %>%
+  mutate(exp_yes = sum(exp)) %>%
+  select(actuarial_age, exp_yes) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t_no <- insurance_train %>%
+  group_by(actuarial_age) %>%
+  filter(smoker == "no") %>%
+  mutate(exp_no = sum(exp)) %>%
+  select(actuarial_age, exp_no) %>%
+  distinct() %>%
+  arrange(actuarial_age)
+
+t <- t1 %>%
+  bind_cols(
+    exp_yes = t_yes$exp_yes,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_no = t_no$exp_no,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_smoker/exp` = mortality_smoker/exp_yes,
+    `mortality_nonsmoker/exp` = mortality_nonsmoker/exp_no
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_smoker/exp`, `mortality_nonsmoker/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(actuarial_age, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# duration with sex
+t1 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(
+    mortality_man = sum(mortality == "yes" & sex == "man"),
+    mortality_woman = sum(mortality == "yes" & sex == "woman"),
+    ) %>%
+  select(duration, mortality_man, mortality_woman) %>%
+  distinct() %>%
+  arrange(duration)
+
+t_man <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  filter(sex == "man") %>%
+  mutate(exp_man = sum(exp)) %>%
+  select(duration, exp_man) %>%
+  distinct() %>%
+  arrange(duration)
+
+t_woman <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  filter(sex == "woman") %>%
+  mutate(exp_woman = sum(exp)) %>%
+  select(duration, exp_woman) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(
+    exp_man = t_man$exp_man,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_woman = t_woman$exp_woman,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_man/exp` = mortality_man/exp_man,
+    `mortality_woman/exp` = mortality_woman/exp_woman
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_man/exp`, `mortality_woman/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# duration with smoker
+t1 <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  mutate(
+    mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
+    mortality_nonsmoker = sum(mortality == "yes" & smoker == "no"),
+    ) %>%
+  select(duration, mortality_smoker, mortality_nonsmoker) %>%
+  distinct() %>%
+  arrange(duration)
+
+t_yes <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  filter(smoker == "yes") %>%
+  mutate(exp_yes = sum(exp)) %>%
+  select(duration, exp_yes) %>%
+  distinct() %>%
+  arrange(duration)
+
+t_no <- insurance_train %>%
+  mutate(duration = round(duration)) %>%
+  group_by(duration) %>%
+  filter(smoker == "no") %>%
+  mutate(exp_no = sum(exp)) %>%
+  select(duration, exp_no) %>%
+  distinct() %>%
+  arrange(duration)
+
+t <- t1 %>%
+  bind_cols(
+    exp_yes = t_yes$exp_yes,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_no = t_no$exp_no,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_smoker/exp` = mortality_smoker/exp_yes,
+    `mortality_nonsmoker/exp` = mortality_nonsmoker/exp_no
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_smoker/exp`, `mortality_nonsmoker/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(duration, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# capital with sex
+t1 <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  mutate(
+    mortality_man = sum(mortality == "yes" & sex == "man"),
+    mortality_woman = sum(mortality == "yes" & sex == "woman"),
+    ) %>%
+  select(capital, mortality_man, mortality_woman) %>%
+  distinct() %>%
+  arrange(capital)
+
+t1 <- t1[-5, ]
+
+t_man <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  filter(sex == "man") %>%
+  mutate(exp_man = sum(exp)) %>%
+  select(capital, exp_man) %>%
+  distinct() %>%
+  arrange(capital)
+
+t_man <- t_man[-5, ]
+
+t_woman <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  filter(sex == "woman") %>%
+  mutate(exp_woman = sum(exp)) %>%
+  select(capital, exp_woman) %>%
+  distinct() %>%
+  arrange(capital)
+
+t <- t1 %>%
+  bind_cols(
+    exp_man = t_man$exp_man,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_woman = t_woman$exp_woman,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_man/exp` = mortality_man/exp_man,
+    `mortality_woman/exp` = mortality_woman/exp_woman
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_man/exp`, `mortality_woman/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(capital, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# capital with smoker
+t1 <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  mutate(
+    mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
+    mortality_nonsmoker = sum(mortality == "yes" & smoker == "no"),
+    ) %>%
+  select(capital, mortality_smoker, mortality_nonsmoker) %>%
+  distinct() %>%
+  arrange(capital)
+
+t_yes <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  filter(smoker == "yes") %>%
+  mutate(exp_yes = sum(exp)) %>%
+  select(capital, exp_yes) %>%
+  distinct() %>%
+  arrange(capital)
+
+t_no <- insurance_train %>%
+  mutate(capital = round(capital)) %>%
+  group_by(capital) %>%
+  filter(smoker == "no") %>%
+  mutate(exp_no = sum(exp)) %>%
+  select(capital, exp_no) %>%
+  distinct() %>%
+  arrange(capital)
+
+t <- t1 %>%
+  bind_cols(
+    exp_yes = t_yes$exp_yes,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_no = t_no$exp_no,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_smoker/exp` = mortality_smoker/exp_yes,
+    `mortality_nonsmoker/exp` = mortality_nonsmoker/exp_no
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_smoker/exp`, `mortality_nonsmoker/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(capital, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# IMC with sex
+t1 <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  mutate(
+    mortality_man = sum(mortality == "yes" & sex == "man"),
+    mortality_woman = sum(mortality == "yes" & sex == "woman"),
+    ) %>%
+  select(IMC, mortality_man, mortality_woman) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t1 <- t1[-8, ]
+
+t_man <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  filter(sex == "man") %>%
+  mutate(exp_man = sum(exp)) %>%
+  select(IMC, exp_man) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t_woman <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  filter(sex == "woman") %>%
+  mutate(exp_woman = sum(exp)) %>%
+  select(IMC, exp_woman) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t_woman <- t_woman[-8, ]
+
+t <- t1 %>%
+  bind_cols(
+    exp_man = t_man$exp_man,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_woman = t_woman$exp_woman,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_man/exp` = mortality_man/exp_man,
+    `mortality_woman/exp` = mortality_woman/exp_woman
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_man/exp`, `mortality_woman/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(IMC, value, color = values, fill = values), alpha = 0.4)
+```
+
+```{r}
+# IMC with smoker
+t1 <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  mutate(
+    mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
+    mortality_nonsmoker = sum(mortality == "yes" & smoker == "no"),
+    ) %>%
+  select(IMC, mortality_smoker, mortality_nonsmoker) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t1 <- t1[-8, ]
+
+t_yes <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  filter(smoker == "yes") %>%
+  mutate(exp_yes = sum(exp)) %>%
+  select(IMC, exp_yes) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t_no <- insurance_train %>%
+  mutate(IMC = round(IMC, 1)) %>%
+  group_by(IMC) %>%
+  filter(smoker == "no") %>%
+  mutate(exp_no = sum(exp)) %>%
+  select(IMC, exp_no) %>%
+  distinct() %>%
+  arrange(IMC)
+
+t_no <- t_no[-8, ]
+
+t <- t1 %>%
+  bind_cols(
+    exp_yes = t_yes$exp_yes,
+    .name_repair = "unique"
+    ) %>%
+  bind_cols(
+    exp_no = t_no$exp_no,
+    .name_repair = "unique"
+  ) %>%
+  mutate(
+    `mortality_smoker/exp` = mortality_smoker/exp_yes,
+    `mortality_nonsmoker/exp` = mortality_nonsmoker/exp_no
+    )
+
+t <- t %>%
+  pivot_longer(cols = c(`mortality_smoker/exp`, `mortality_nonsmoker/exp`), names_to = "values")
+
+t %>%
+  ggplot() +
+  geom_point(aes(IMC, value, color = values, fill = values), alpha = 0.4)
+```
+
+####
+
+```{r}
+# GAM
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+  step_log(capital, IMC, base = 10) %>%
+  prep() %>% juice()
+
 gam_model <- gam(mortality ~ sex + smoker +
-                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(actuarial_age, bs = "ps") +
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = sex),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = F)
+summary(gam_model)
+
+t <- Sys.time()
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") +
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = sex),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
+# saveRDS(gam_model, "../01_mortality_model/results/gam_model_mortality.RDS")
+t1 <- Sys.time()
+t1 - t
+summary(gam_model)
+plot(gam_model, ylim = c(-5,5))
+# Parametric coefficients:
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -4.91034    0.03809 -128.924   <2e-16 ***
+# sexwoman    -0.94059    0.06417  -14.657   <2e-16 ***
+# smokeryes    0.03401    0.07696    0.442    0.659    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Approximate significance of smooth terms:
+#                          edf Ref.df   Chi.sq  p-value    
+# s(actuarial_age)      3.7088      9 1996.089  < 2e-16 ***
+# s(duration):sexman    7.1250      9   71.381  < 2e-16 ***
+# s(duration):sexwoman  4.5378      9   15.813 1.17e-05 ***
+# s(duration):smokerno  1.1365      9    9.680 5.33e-07 ***
+# s(duration):smokeryes 7.8883      9  155.289  < 2e-16 ***
+# s(capital):sexman     6.9771      9  143.080  < 2e-16 ***
+# s(capital):sexwoman   0.7193      8    2.507  0.06158 .  
+# s(IMC):sexman         2.1418      9    9.013  0.00786 ** 
+# s(IMC):sexwoman       4.0711      8  113.249  < 2e-16 ***
+```
+
+
+```{r}
+gam_model <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps", by = sex) +
-                   s(actuarial_age, bs = "ps", by = smoker) + 
+                   s(actuarial_age, bs = "ps", by = smoker) +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
@@ -243,36 +647,193 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(IMC, bs = "ps", by = sex) +
                    s(IMC, bs = "ps", by = smoker),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = F)
-
 summary(gam_model)
 
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps", by = sex) +
+                   s(actuarial_age, bs = "ps", by = smoker) +
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(capital, bs = "ps", by = smoker) +
+                   s(IMC, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = smoker),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
+gam_model <- readRDS("../01_mortality_model/results/gam_model_mortality.RDS")
+summary(gam_model)
+```
+
+```{r}
+# Best threshold for kappa
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  prep() %>% juice()
+
+prob <- predict(gam_model, newdata = insurance_train_prep, 
+                type = "response")
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train_prep$mortality)
+
+roc_c <- prob %>%
+  roc_curve(mortality, value, event_level = "second")
+
+thresholds <- roc_c %>% select(.threshold) %>% pull()
+length(thresholds)
+length(which(thresholds <= 0.08966623))
+thresholds <- quantile(thresholds, 
+                       probs = seq(0.98, 0.999, 0.0001))
+
+thresholds <- roc_c %>% select(.threshold) %>% pull()
+thresholds <- thresholds[(255923-300):(255923+100)]
+kappa <- seq(1, length(thresholds))
+
+for (i in 1:length(thresholds)){
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > thresholds[i],
+                                         "yes", "no"))) %>%
+    conf_mat(truth = mortality,
+             estimate = pred_class)
+  
+  kappa[i] <- confusion_matrix %>% 
+    summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% 
+    dplyr::select(.estimate) %>% 
+    pull()
+}
+which.max(kappa)
+thres <- 0.08966623
+confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > thres,
+                                         "yes", "no"))) %>%
+    conf_mat(truth = mortality,
+             estimate = pred_class)
+confusion_matrix
+confusion_matrix %>% 
+    summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% 
+    dplyr::select(.estimate) %>% 
+    pull()
+
+plot(kappa)
+```
+
+```{r}
+# Best threshold for Fscore
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  prep() %>% juice()
+
+prob <- predict(gam_model, newdata = insurance_train_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train_prep$mortality)
+
+prec_rec_curve <- prob %>%
+  pr_curve(mortality, value, event_level = "second")
+
+beta <- 9
+thres <- prec_rec_curve %>%
+  mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
+  select(.threshold) %>%
+  pull()
+
+# thres <- 0.03439086
+confusion_matrix <- prob %>%
+  mutate(pred_class = as.factor(ifelse(value > thres,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class)
+confusion_matrix
+
+
+confusion_matrix %>%
+  summary(event_level = "second", beta = 9)
+```
+
+```{r}
+# Best threshold for max(sensitivity + specificity)
+insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + IMC,
+         data = insurance_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  prep() %>% juice()
+
+prob <- predict(gam_model, newdata = insurance_train_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train_prep$mortality)
+
+roc_c <- prob %>%
+  roc_curve(mortality, value, event_level = "second")
+autoplot(roc_c)
+
+
+thres <- roc_c %>%
+  mutate(sum = sensitivity + specificity) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
+  select(.threshold) %>%
+  pull()
+
+# thres <- 0.01173517
+confusion_matrix <- prob %>%
+  mutate(pred_class = as.factor(ifelse(value > thres,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class)
+confusion_matrix
+
+
+confusion_matrix %>%
+  summary(event_level = "second")
+```
+
+
+
+```{r}
+gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = sex),
+                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
+summary(gam_model)
+# saveRDS(gam_model, "../01_mortality_model/results/gam_model.RDS")
+
 # Parametric coefficients:
-#                    Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)        -5.32871    0.05755 -92.597  < 2e-16 ***
-# sexwoman           -0.83848    0.15147  -5.536 3.10e-08 ***
-# smokeryes           0.54040    0.10100   5.350 8.78e-08 ***
-# sexwoman:smokeryes  0.03907    0.13408   0.291    0.771    
+#             Estimate Std. Error  z value Pr(>|z|)    
+# (Intercept) -4.91023    0.03809 -128.928   <2e-16 ***
+# sexwoman    -0.95785    0.06505  -14.724   <2e-16 ***
+# smokeryes    0.04702    0.07596    0.619    0.536    
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#                                 edf  Ref.df Chi.sq  p-value    
-# s(actuarial_age):sexman    8.367434 8.65932 57.424 7.59e-06 ***
-# s(actuarial_age):sexwoman  1.960535 2.19488  0.487 0.892876    
-# s(actuarial_age):smokerno  5.080668 5.51675 15.760 0.009526 ** 
-# s(actuarial_age):smokeryes 7.600967 7.85593 58.552  < 2e-16 ***
-# s(duration):sexman         1.041007 1.04917  0.522 0.467231    
-# s(duration):sexwoman       4.014722 4.82937 41.420  < 2e-16 ***
-# s(duration):smokerno       8.343377 8.70977 74.225  < 2e-16 ***
-# s(duration):smokeryes      8.347030 8.79948 95.777  < 2e-16 ***
-# s(capital):sexman          4.204065 4.51214 59.041  < 2e-16 ***
-# s(capital):sexwoman        0.001226 0.00213  0.000 0.995554    
-# s(capital):smokerno        2.224963 2.56282 31.501 0.000256 ***
-# s(capital):smokeryes       1.000525 1.00103 38.993  < 2e-16 ***
-# s(IMC):sexman              1.001356 1.00270  1.107 0.293718    
-# s(IMC):sexwoman            3.168609 3.60054 38.616 1.79e-05 ***
-# s(IMC):smokerno            1.001290 1.00257  1.092 0.296341    
-# s(IMC):smokeryes           2.827572 3.20640 30.024 2.49e-06 ***
+#                            edf Ref.df   Chi.sq  p-value    
+# s(actuarial_age)      3.720374      9 1986.664  < 2e-16 ***
+# s(duration)           0.009843      9    0.009 0.000194 ***
+# s(capital)            0.043252      9    0.041 0.000461 ***
+# s(IMC)                0.003195      9    0.003 0.010083 *  
+# s(duration):sexman    7.482038      9   85.939  < 2e-16 ***
+# s(duration):sexwoman  4.741846      9   29.893  < 2e-16 ***
+# s(duration):smokerno  0.951182      9   11.469  8.1e-07 ***
+# s(duration):smokeryes 7.884977      9  166.362  < 2e-16 ***
+# s(capital):sexman     6.972616      9  117.955  < 2e-16 ***
+# s(capital):sexwoman   3.306112      8    9.748 0.001672 ** 
+# s(IMC):sexman         2.128135      9    8.654 0.007842 ** 
+# s(IMC):sexwoman       4.072868      8  111.462  < 2e-16 ***
+plot(gam_model, ylim = c(-5, 5))
 ```
 
 ```{r}
@@ -289,7 +850,7 @@ thres <- prec_rec_curve %>%
   filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
-
+# thres <- 0.03884555
 
 confusion_matrix <- prob %>%
   mutate(pred_class = as.factor(ifelse(value > thres,
