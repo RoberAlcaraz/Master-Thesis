@@ -1,0 +1,168 @@
+---
+title: '**Lapse: Model tuning and selection**'
+author: '*Roberto Jesús Alcaraz Molina*'
+date: "25/05/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    df_print: paged
+header-includes: 
+- \usepackage{float}
+- \usepackage{amsbsy}
+- \usepackage{amsmath}
+- \usepackage{graphicx}
+- \usepackage{subfig}
+- \usepackage{booktabs}
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, 
+                      echo = T, 
+                      message = FALSE,
+                      fig.pos="H", 
+                      fig.align="center",
+                      fig.width=15,
+                      cache=FALSE, error = TRUE)
+```
+
+```{r, echo = F}
+# install.packages("pacman")
+# devtools::install_github("stevenpawley/recipeselectors")
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip)
+theme_set(theme_bw())
+
+# Models packages
+pacman::p_load(ranger)
+```
+
+```{r}
+lapse_data <- readRDS("../00_data/insurance_lapse.RDS")
+lapse_data$lapse <- as.factor(lapse_data$lapse)
+
+lapse_data <- lapse_data %>%
+  filter(actuarial_age >= 21, actuarial_age <= 61)
+
+set.seed(123)
+
+lapse_split <- initial_split(lapse_data, prop = 0.7, strata = lapse)
+lapse_train <- training(lapse_split)
+lapse_test  <- testing(lapse_split)
+
+set.seed(23)
+insurance_folds <- vfold_cv(lapse_train, v = 5,
+                            strata = lapse)
+
+basic_rec <- 
+  recipe(lapse ~ sex + duration + actuarial_age + IMC + capital, 
+         data = lapse_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + duration:sex_woman + IMC:sex_woman + capital:sex_woman)
+
+basic_rec %>% prep() %>% juice
+```
+
+# Metrics
+```{r}
+grid_ctrl <- control_grid(
+  save_pred = TRUE, 
+  save_workflow = TRUE, 
+  event_level = "second"
+  )
+
+f_meas_2 <- function(data, truth, estimate, na_rm = TRUE, ...){
+  f_meas(
+    data = data,
+    truth = !! rlang::enquo(truth),
+    estimate = !! rlang::enquo(estimate),
+    # set beta = 2
+    beta = 2,
+    na_rm = TRUE,
+    ...
+  )
+}
+
+f_meas_2 <- new_class_metric(f_meas_2, direction = "maximize")
+
+# It works
+# prob %>%
+#     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+#     f_meas(mortality, pred_class, beta = 2, event_level = "second")
+# prob %>%
+#     mutate(pred_class = as.factor(ifelse(value > t[i], "yes", "no"))) %>%
+#     f_meas_2(mortality, pred_class)
+
+my_metrics = metric_set(f_meas_2, recall, kap)
+```
+
+
+# Models
+
+```{r}
+xgboost_rec <- 
+  recipe(lapse ~ sex + duration + actuarial_age + IMC + capital, 
+         data = lapse_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + duration:sex_woman + IMC:sex_woman + capital:sex_woman + actuarial_age:sex_man + duration:sex_man + IMC:sex_man + capital:sex_man) %>% 
+  step_zv(all_predictors())
+
+xgboost_model <- 
+  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
+    loss_reduction = tune(), sample_size = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("xgboost") 
+
+xgboost_wf <- 
+  workflow() %>% 
+  add_recipe(xgboost_rec) %>% 
+  add_model(xgboost_model) 
+```
+
+```{r}
+# Random Forest
+rf_rec <- 
+  recipe(lapse ~ sex + duration + actuarial_age + IMC + capital, 
+         data = lapse_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  step_interact(terms = ~ actuarial_age:sex + duration:sex + IMC:sex + capital:sex)
+
+rf_model <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_mode("classification") %>% 
+  set_engine("ranger")
+
+rf_wf <- 
+  workflow() %>%
+  add_recipe(rf_rec) %>%
+  add_model(rf_model)
+```
+
+
+```{r}
+mlp_rec <- 
+  recipe(lapse ~ sex + duration + actuarial_age + IMC + capital, 
+         data = lapse_train) %>%
+  step_log(capital, IMC, base = 10) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ actuarial_age:sex_woman + duration:sex_woman + IMC:sex_woman + capital:sex_woman) %>% 
+  step_zv(all_predictors()) %>%
+  step_corr(all_predictors())
+
+mlp_model <-
+  mlp(hidden_units = tune(), epochs = tune(), penalty = tune()) %>%
+  set_engine('nnet') %>%
+  set_mode('classification')
+
+mlp_wf <- 
+  workflow() %>%
+  add_recipe(mlp_rec) %>%
+  add_model(mlp_model)
+```
+
+
+# Parameter tuning
+
+
+

@@ -100,6 +100,62 @@ my_metrics = metric_set(f_meas_2, recall, kap)
 ```
 
 
+# Models
+
+```{r, eval=F}
+n <- nrow(insurance_folds)
+
+f2 <- seq(1, n)
+kappa <- seq(1, n)
+rec <- seq(1, n)
+
+for (i in 1:n){
+  t <- Sys.time()
+  analysis_data <- analysis(insurance_folds$splits[[i]])
+  analysis_data <- 
+    recipe(mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC,
+           data = analysis_data) %>%
+    themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
+    step_log(capital, IMC, base = 10) %>% 
+    prep() %>% juice()
+  
+  validation_data <- assessment(insurance_folds$splits[[i]])
+  
+  gam_model <- gam(mortality ~ sex + smoker +
+                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
+                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(duration, bs = "ps", by = sex) +
+                   s(duration, bs = "ps", by = smoker) +
+                   s(capital, bs = "ps", by = sex) +
+                   s(IMC, bs = "ps", by = sex),
+                 data = analysis_data, family = "binomial", method = "REML", select = T)
+  
+  prob <- predict(gam_model, newdata = validation_data, type = "response")
+
+  prob <- as_tibble(prob) %>%
+    mutate(mortality = validation_data$mortality)
+  
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > 0.03884555, "yes", "no"))) %>%
+    conf_mat(truth = mortality, estimate = pred_class)
+  
+  f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 2) %>%
+    filter(.metric == "f_meas") %>% dplyr::select(.estimate) %>% pull()
+  kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "kap") %>% dplyr::select(.estimate) %>% pull()
+  rec[i] <- confusion_matrix %>% summary(event_level = "second") %>%
+    filter(.metric == "recall") %>% dplyr::select(.estimate) %>% pull()
+  
+  t1 <- Sys.time()
+  t1 - t
+}
+
+
+mean(f2)
+mean(kappa)
+mean(rec)
+```
+
 ```{r}
 xgboost_rec <- 
   recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
@@ -171,60 +227,7 @@ mlp_wf <-
 ```
 
 
-```{r, eval=F}
-n <- nrow(insurance_folds)
-
-f2 <- seq(1, n)
-kappa <- seq(1, n)
-rec <- seq(1, n)
-
-for (i in 1:n){
-  t <- Sys.time()
-  analysis_data <- analysis(insurance_folds$splits[[i]])
-  analysis_data <- 
-    recipe(mortality ~ period + sex + smoker + actuarial_age + duration + capital + IMC,
-           data = analysis_data) %>%
-    themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-    step_log(capital, IMC, base = 10) %>% 
-    prep() %>% juice()
-  
-  validation_data <- assessment(insurance_folds$splits[[i]])
-  
-  gam_model <- gam(mortality ~ sex + smoker +
-                   s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
-                   s(duration, bs = "ps", by = sex) +
-                   s(duration, bs = "ps", by = smoker) +
-                   s(capital, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = sex),
-                 data = analysis_data, family = "binomial", method = "REML", select = T)
-  
-  prob <- predict(gam_model, newdata = validation_data, type = "response")
-
-  prob <- as_tibble(prob) %>%
-    mutate(mortality = validation_data$mortality)
-  
-  confusion_matrix <- prob %>%
-    mutate(pred_class = as.factor(ifelse(value > 0.03884555, "yes", "no"))) %>%
-    conf_mat(truth = mortality, estimate = pred_class)
-  
-  f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 2) %>%
-    filter(.metric == "f_meas") %>% dplyr::select(.estimate) %>% pull()
-  kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
-    filter(.metric == "kap") %>% dplyr::select(.estimate) %>% pull()
-  rec[i] <- confusion_matrix %>% summary(event_level = "second") %>%
-    filter(.metric == "recall") %>% dplyr::select(.estimate) %>% pull()
-  
-  t1 <- Sys.time()
-  t1 - t
-}
-
-
-mean(f2)
-mean(kappa)
-mean(rec)
-```
-
+# Parameter tuning 
 
 ```{r}
 # XGBOOST
@@ -298,6 +301,7 @@ saveRDS(mlp_wf_tune, "../01_mortality_model/results_mortality/mlp_wf_tune.RDS")
 t5 <- Sys.time()
 t5 - t
 ```
+
 
 ```{r}
 autoplot(xgboost_wf_tune)
