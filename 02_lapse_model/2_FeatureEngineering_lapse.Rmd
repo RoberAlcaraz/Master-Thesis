@@ -218,6 +218,7 @@ plot(gam_model_lapse, ylim = c(-2,2))
 
 # saveRDS(gam_model_lapse, "../02_lapse_model/results_lapse/gam_model_lapse.RDS")
 gam_model_lapse <- readRDS("../02_lapse_model/results_lapse/gam_model_lapse.RDS")
+plot(gam_model_lapse, ylim = c(-1,1))
 ```
 
 ```{r}
@@ -255,7 +256,7 @@ for (i in 1:length(thresholds)){
 which.max(kappa)
 thresholds[104] # 0.3272862
 confusion_matrix <- prob %>%
-    mutate(pred_class = as.factor(ifelse(value > thresholds[104],
+    mutate(pred_class = as.factor(ifelse(value > 0.3272862,
                                          "yes", "no"))) %>%
     conf_mat(truth = lapse,
              estimate = pred_class)
@@ -280,7 +281,7 @@ prec_rec_curve <- prob %>%
 
 autoplot(prec_rec_curve)
 
-beta <- 1
+beta <- 2
 thres <- prec_rec_curve %>%
   mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
   filter(sum == max(sum, na.rm = T)) %>%

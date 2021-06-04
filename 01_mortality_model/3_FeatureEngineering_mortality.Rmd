@@ -31,7 +31,6 @@ knitr::opts_chunk$set(warning = FALSE,
 pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip, ggfortify)
 theme_set(theme_bw())
 
-# Models packages
 pacman::p_load(ranger)
 ```
 
@@ -612,8 +611,9 @@ gam_model <- gam(mortality ~ sex + smoker +
 # saveRDS(gam_model, "../01_mortality_model/results_mortality/gam_model_mortality.RDS")
 t1 <- Sys.time()
 t1 - t
+gam_model <- gam_model_mortality
 summary(gam_model)
-plot(gam_model, ylim = c(-5,5))
+plot(gam_model, ylim = c(-5,5), rug = T)
 # Parametric coefficients:
 #             Estimate Std. Error  z value Pr(>|z|)    
 # (Intercept) -4.91034    0.03809 -128.924   <2e-16 ***
@@ -738,14 +738,14 @@ prob <- as_tibble(prob) %>%
 prec_rec_curve <- prob %>%
   pr_curve(mortality, value, event_level = "second")
 
-beta <- 9
+beta <- 8
 thres <- prec_rec_curve %>%
   mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
   filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
-# thres <- 0.03439086
+# thres <- 0.03944233
 confusion_matrix <- prob %>%
   mutate(pred_class = as.factor(ifelse(value > thres,
                                        "yes", "no"))) %>%
@@ -755,7 +755,7 @@ confusion_matrix
 
 
 confusion_matrix %>%
-  summary(event_level = "second", beta = 9)
+  summary(event_level = "second", beta = 8)
 ```
 
 ```{r}

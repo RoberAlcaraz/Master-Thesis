@@ -80,7 +80,7 @@ f_meas_2 <- function(data, truth, estimate, na_rm = TRUE, ...){
     truth = !! rlang::enquo(truth),
     estimate = !! rlang::enquo(estimate),
     # set beta = 2
-    beta = 2,
+    beta = 8,
     na_rm = TRUE,
     ...
   )
@@ -178,6 +178,56 @@ mlp_wf <-
 
 
 ```{r}
+# XGBOOST
+set.seed(123)
+max_ent_xgboost <- grid_max_entropy(parameters(xgboost_wf), size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+xgboost_wf_tune <- xgboost_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_xgboost,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+stopCluster(cl)
+saveRDS(xgboost_wf_tune, "../01_mortality_model/results_mortality/xgboost_wf_tune.RDS")
+t3 <- Sys.time()
+t3 - t
+
+# Random Forest
+set.seed(123)
+
+rf_param <- rf_wf %>%
+  parameters() %>%
+  update(mtry = finalize(mtry(c(1, 10))))
+
+rf_rec %>% prep() %>% juice()
+
+max_ent_rf <- grid_max_entropy(rf_param, size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+rf_wf_tune <- rf_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_rf,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+saveRDS(rf_wf_tune, "../01_mortality_model/results_mortality/rf_wf_tune.RDS")
+stopCluster(cl)
+
+t4 <- Sys.time()
+t4 - t
+
 # GAM
 n <- nrow(insurance_folds)
 
@@ -213,10 +263,10 @@ for (i in 1:n){
     mutate(mortality = validation_data$mortality)
   
   confusion_matrix <- prob %>%
-    mutate(pred_class = as.factor(ifelse(value > 0.03884555, "yes", "no"))) %>%
+    mutate(pred_class = as.factor(ifelse(value > 0.03944233, "yes", "no"))) %>%
     conf_mat(truth = mortality, estimate = pred_class)
   
-  f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 2) %>%
+  f2[i] <- confusion_matrix %>% summary(event_level = "second", beta = 8) %>%
     filter(.metric == "f_meas") %>% dplyr::select(.estimate) %>% pull()
   kappa[i] <- confusion_matrix %>% summary(event_level = "second") %>%
     filter(.metric == "kap") %>% dplyr::select(.estimate) %>% pull()
@@ -230,59 +280,9 @@ mean(f2)
 mean(kappa)
 mean(rec)
 
-# XGBOOST
-set.seed(123)
-max_ent_xgboost <- grid_max_entropy(parameters(xgboost_wf), size = 15)
-
-t <- Sys.time()
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
-
-xgboost_wf_tune <- xgboost_wf %>%
-  tune_grid(
-    resamples = insurance_folds,
-    grid = max_ent_xgboost,
-    control = grid_ctrl,
-    metrics = my_metrics
-    )
-
-stopCluster(cl)
-saveRDS(xgboost_wf_tune, "../01_mortality_model/results_mortality/xgboost_wf_tune.RDS")
-t3 <- Sys.time()
-t3 - t
-# Time difference of 4.086126 hours
-
-# Random Forest
-set.seed(123)
-
-rf_param <- rf_wf %>%
-  parameters() %>%
-  update(mtry = finalize(mtry(c(1, 10))))
-
-max_ent_rf <- grid_max_entropy(rf_param, size = 15)
-
-t <- Sys.time()
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
-
-rf_wf_tune <- rf_wf %>%
-  tune_grid(
-    resamples = insurance_folds,
-    grid = max_ent_rf,
-    control = grid_ctrl,
-    metrics = my_metrics
-    )
-
-saveRDS(rf_wf_tune, "../01_mortality_model/results_mortality/rf_wf_tune.RDS")
-stopCluster(cl)
-
-t4 <- Sys.time()
-t4 - t
-# Time difference of 5.317373 hours
-
 
 set.seed(123)
-max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 10)
+max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 15)
 
 t <- Sys.time()
 cl <- makePSOCKcluster(8)
@@ -307,14 +307,22 @@ t5 - t
 autoplot(xgboost_wf_tune)
 
 xgboost_wf_tune %>%
-  collect_predictions() %>%
+  collect_predictions()
+  
+xgboost_wf_tune$.notes
+xgboost_wf_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "f_meas") %>%
+  arrange()
+
+rf_wf_tune %>% 
+  collect_predictions() %>% 
+  filter(mtry == 9, min_n == 3) %>% 
   conf_mat(truth = mortality,
            estimate = .pred_class)
 
-rf_wf_tune %>%
-  collect_predictions() %>%
-  conf_mat(truth = mortality,
-           estimate = .pred_class)
+rf_wf_tune %>% collect_metrics() %>% filter(.metric == "f_meas") %>%
+  arrange()
 
 xgboost_param <- xgboost_wf_tune %>%
   collect_metrics() %>%

@@ -58,8 +58,8 @@ Our variables are:
   - `capital_factor_1`
   - `capital_factor_2`
   - `capital_factor_3`
-  - `IMC_factor_1`
-  - `IMC_factor_2`
+  - `BMI_factor_1`
+  - `BMI_factor_2`
 
 
 - **Numerical variables (7)**:
@@ -70,14 +70,13 @@ Our variables are:
   - `duration`
   - `duration_cat`
   - `capital`
-  - `IMC`
+  - `BMI`
 
 ## Target variable: `lapse`
 
 ```{r}
 # lapse
 lapse_data$lapse <- as.factor(lapse_data$lapse)
-table(lapse_data$lapse)/nrow(lapse_data)
 ```
 
 We are going to split the data in 70% for training and 30% for testing
@@ -99,29 +98,20 @@ lapse_test  <- testing(lapse_split)
 - `capital_factor_1`
 - `capital_factor_2`
 - `capital_factor_3`
-- `IMC_factor_1`
-- `IMC_factor_2`
-
-### Period
-
-```{r}
-lapse_train %>%
-  ggplot(aes(x = period, fill = lapse)) +
-  geom_bar(position = "dodge") 
-
-tab <- table(lapse_train$period, lapse_train$lapse)
-cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
-
-# In the third year the percentage increases
-```
+- `BMI_factor_1`
+- `BMI_factor_2`
 
 ### Cover
 ```{r}
 table(lapse_train$cover)/nrow(lapse_train)
 
+group_colors <- c("indianred", "cornflowerblue")
+
 lapse_train %>%
   ggplot(aes(x = cover, fill = lapse)) +
-  geom_bar(position = "dodge")
+  geom_bar(aes(y=..count../sum(..count..)), position = "dodge", alpha = 0.9, color = "black") +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 tab <- table(lapse_train$cover, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
@@ -135,7 +125,9 @@ table(lapse_train$sex)/nrow(lapse_train)
 
 lapse_train %>%
   ggplot(aes(x = sex, fill = lapse)) +
-  geom_bar(position = "dodge")
+  geom_bar(aes(y=..count../sum(..count..)), position = "dodge", alpha = 0.9, color = "black") +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 tab <- table(lapse_train$sex, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
@@ -149,7 +141,9 @@ table(lapse_train$smoker)/nrow(lapse_train)
 
 lapse_train %>%
   ggplot(aes(x = smoker, fill = lapse)) +
-  geom_bar(position = "dodge")
+  geom_bar(aes(y=..count../sum(..count..)), position = "dodge", alpha = 0.9, color = "black") +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 tab <- table(lapse_train$smoker, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
@@ -162,7 +156,10 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 table(lapse_train$good_health)/nrow(lapse_train)
 lapse_train %>%
   ggplot(aes(x = good_health, fill = lapse)) +
-  geom_bar(position = "dodge")
+  geom_bar(aes(y=..count../sum(..count..)), position = "dodge", alpha = 0.9, color = "black") +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
+
 tab <- table(lapse_train$good_health, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
@@ -196,21 +193,21 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 # Non-linear?
 ```
 
-### IMC_DESC
+### BMI_DESC
 
 ```{r}
 lapse_train %>%
-  ggplot(aes(x = IMC_factor_1, fill = lapse)) +
+  ggplot(aes(x = BMI_factor_1, fill = lapse)) +
   geom_bar(position = "dodge")
 
-tab <- table(lapse_train$IMC_factor_1, lapse_train$lapse)
+tab <- table(lapse_train$BMI_factor_1, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 lapse_train %>%
-  ggplot(aes(x = IMC_factor_2, fill = lapse)) +
+  ggplot(aes(x = BMI_factor_2, fill = lapse)) +
   geom_bar(position = "dodge")
 
-tab <- table(lapse_train$IMC_factor_2, lapse_train$lapse)
+tab <- table(lapse_train$BMI_factor_2, lapse_train$lapse)
 cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 
 # more or less the same
@@ -224,15 +221,16 @@ cbind(tab, tab[, 2] / (tab[, 1] + tab[, 2]))
 - `duration`
 - `duration_cat`
 - `capital`
-- `IMC`
+- `BMI`
 
 
 ### actuarial and suscription age
 ```{r}
 lapse_train %>%
-  ggplot(aes(x = actuarial_age, color=lapse, fill=lapse)) +
-  geom_histogram(aes(y=..density..), alpha = 0.5)+
-  geom_density(alpha=.2, fill="#FF6666") 
+  ggplot(aes(x = actuarial_age, fill=lapse), color="black" ) +
+  geom_density(alpha=.8)  +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 # seems good
 
 # sus_age
@@ -262,8 +260,10 @@ t <- t1 %>%
   mutate(`lapse/exp` = lapse/exp)
 
 t %>%
-  ggplot() +
-  geom_point(aes(actuarial_age, `lapse/exp`), alpha = 0.4)
+  ggplot(aes(actuarial_age, `lapse/exp`)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "cornflowerblue", fill = "cornflowerblue") +
+  scale_y_continuous(labels = percent_format())
 
 quantile(lapse_train$actuarial_age, probs = c(0.01, 0.99))
 ```
@@ -282,9 +282,10 @@ lapse_train %>%
 ### duration
 ```{r}
 lapse_train %>%
-  ggplot(aes(x = duration, color=lapse, fill=lapse)) +
-  geom_histogram(aes(y=..density..), alpha = 0.5)+
-  geom_density(alpha=.2, fill="#FF6666") 
+  ggplot(aes(x = duration, fill=lapse), color="black" ) +
+  geom_density(alpha=.8)  +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 # Very significant
 
@@ -309,16 +310,20 @@ t <- t1 %>%
   mutate(`lapse/exp` = lapse/exp)
 
 t %>%
-  ggplot() +
-  geom_point(aes(duration, `lapse/exp`), alpha = 0.4)
+  ggplot(aes(duration, `lapse/exp`)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "cornflowerblue", fill = "cornflowerblue") +
+  scale_y_continuous(labels = percent_format())
 ```
 ### Capital
 ```{r}
 summary(lapse_train$capital)
 lapse_train %>%
-  ggplot(aes(x = capital, color=lapse, fill=lapse)) +
-  geom_histogram(aes(y=..density..), alpha = 0.5)+
-  geom_density(alpha=.2, fill="#FF6666") 
+  ggplot(aes(x = capital, fill=lapse), color="black" ) +
+  geom_density(alpha=.8)  +
+  scale_fill_manual(values = group_colors) +
+  scale_x_log10() +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 lapse_train %>%
   filter(capital > 2000000)
@@ -356,22 +361,53 @@ t %>%
 ```
 
 
-### IMC
+### BMI
 ```{r}
-summary(lapse_train$IMC)
+summary(lapse_train$BMI)
+lapse_train %>% 
+  count(lapse)
+lapse_train %>% 
+  filter(duration < 2.5) %>% 
+  count(lapse)
+lapse_train %>%
+  ggplot(aes(x = BMI, fill=lapse), color="black" ) +
+  geom_density(alpha=.8)  +
+  scale_fill_manual(values = group_colors) +
+  scale_y_continuous(labels = percent_format()) + ylab("")
 
 lapse_train %>%
-  ggplot(aes(x = IMC, color=lapse, fill=lapse)) +
-  geom_histogram(aes(y=..density..), alpha = 0.5)+
-  geom_density(alpha=.2, fill="#FF6666") 
-
-lapse_train %>%
-  ggplot(aes(x = IMC, color=lapse, fill=lapse)) +
+  ggplot(aes(x = BMI, color=lapse, fill=lapse)) +
   geom_histogram(aes(y=..density..), alpha = 0.5)+
   geom_density(alpha=.2, fill="#FF6666") +
   scale_x_log10()
 
+t1 <- lapse_train %>%
+  mutate(BMI = round(BMI)) %>%
+  group_by(BMI) %>%
+  mutate(lapse = sum(lapse == "yes")) %>%
+  select(BMI, lapse) %>%
+  distinct() %>%
+  arrange(BMI)
+
+t2 <- lapse_train %>%
+  mutate(BMI = round(BMI)) %>%
+  group_by(BMI) %>%
+  mutate(exp = sum(exp)) %>%
+  select(BMI, exp) %>%
+  distinct() %>%
+  arrange(BMI)
+
+t <- t1 %>%
+  bind_cols(exp = t2$exp, .name_repair = "unique") %>%
+  mutate(`lapse/exp` = lapse/exp)
+
+t %>%
+  filter(BMI != 59) %>% 
+  ggplot() +
+  geom_point(aes(BMI, `lapse/exp`), alpha = 0.4)
+
 # Some outliers too
+37909/(59450)
 ```
 
 ```{r}
@@ -381,7 +417,7 @@ names(lapse_train)
 corrplot::corrplot(a)
 
 lapse_train %>%
-  ggplot(aes(x = capital, y = IMC)) +
+  ggplot(aes(x = capital, y = BMI)) +
   geom_point()
 # we have no linear correlation between the numerical variables
 ```

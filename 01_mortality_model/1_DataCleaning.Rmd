@@ -34,7 +34,8 @@ pacman::p_load(tidyverse, tidymodels)
 # insurance <- read.table("BBDD_DEFINITIVA_V4.txt", header = T)
 # saveRDS(insurance, "BBDD_DEFINITIVA_V4.RDS")
 
-insurance <- readRDS("../0_data/BBDD_DEFINITIVA_V4.RDS")
+insurance <- readRDS("../00_data/BBDD_DEFINITIVA_V4.RDS")
+skimr::skim(insurance)
 ```
 
 - CLAVE: Identification of the person
@@ -60,19 +61,19 @@ insurance <- readRDS("../0_data/BBDD_DEFINITIVA_V4.RDS")
 - CAPITAL_CAT2_DESC:
 - CAPITAL_CAT3_DESC:
 
-- IMC:          
-- IMC_CAT1:    
-- IMC_CAT2:          
-- IMC_CAT3:
-- IMC_CAT1_DESC:    
-- IMC_CAT2_DESC:  
+- BMI:          
+- BMI_CAT1:    
+- BMI_CAT2:          
+- BMI_CAT3:
+- BMI_CAT1_DESC:    
+- BMI_CAT2_DESC:  
 
 ```{r}
 insurance <- insurance %>%
   rename(
     key              = CLAVE, 
     actuarial_age    = EDAD_ACTUARIAL, 
-    sus_age          = EDAD_SUS,
+    subs_age          = EDAD_SUS,
     duration_cat     = DURACION_CAT,
     capital          = CAPITAL,
     ) %>%
@@ -98,19 +99,19 @@ insurance <- insurance %>%
                               levels = c("0-100.000", "100.001-200.000", 
                                          "+200.000"),
                               ordered = T),
-    IMC              = as.numeric(gsub(",", ".", gsub("\\.", "", insurance$IMC))),
-    IMC_factor_1     = factor(insurance$IMC_CAT1_DESC, 
+    BMI              = as.numeric(gsub(",", ".", gsub("\\.", "", insurance$IMC))),
+    BMI_factor_1     = factor(insurance$IMC_CAT1_DESC, 
                               levels = c("Normal", "Riesgo"),
                               labels = c("normal", "risk")),
-    IMC_factor_2     = factor(insurance$IMC_CAT2_DESC,
+    BMI_factor_2     = factor(insurance$IMC_CAT2_DESC,
                               levels = c("Normal", "Sobrepeso"),
                               labels = c("normal", "overweight"))
   ) %>%
   
   select(
-    key, period, cover, sex,  smoker, good_health, actuarial_age, sus_age, exp,
+    key, period, cover, sex,  smoker, good_health, actuarial_age, subs_age, exp,
     mortality, duration, duration_cat, capital, capital_factor_1, capital_factor_2,
-    capital_factor_3, IMC, IMC_factor_1, IMC_factor_2
+    capital_factor_3, BMI, BMI_factor_1, BMI_factor_2
   )
 ```
 
@@ -180,8 +181,8 @@ insurance_lapse
 ```
 
 ```{r}
-# saveRDS(insurance, file = "../00_data/insurance.RDS")
-# saveRDS(insurance_lapse, file = "../00_data/insurance_lapse.RDS")
+saveRDS(insurance, file = "../00_data/insurance.RDS")
+saveRDS(insurance_lapse, file = "../00_data/insurance_lapse.RDS")
 
 insurance <- readRDS("../00_data/insurance.RDS")
 insurance_lapse <- readRDS("../00_data/insurance_lapse.RDS")
