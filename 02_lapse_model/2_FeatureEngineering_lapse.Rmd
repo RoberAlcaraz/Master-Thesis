@@ -93,6 +93,7 @@ select_rec <-
 new_data <- select_rec %>% prep() %>% juice()
 new_data
 
+weight_func()
 # The recursive feature selection with Random Forest discard the variables smoker and good_health.
 ```
 

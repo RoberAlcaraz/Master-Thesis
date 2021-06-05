@@ -71,10 +71,10 @@ rfe_model <- rand_forest() %>%
 set.seed(1234)
 select_rec <- 
   recipe(mortality ~ cover + sex + smoker + good_health +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   step_select_vip(all_predictors(), outcome = "mortality", model = rfe_model, top_p = 6)
 
 new_data <- select_rec %>% prep() %>% juice()
@@ -90,16 +90,16 @@ new_data
 ```{r, eval = F}
 insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 # Here we test if they are non-linear or not
 gam_model <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps"),
+                   s(capital, bs = "ps") + s(BMI, bs = "ps"),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = F)
 summary(gam_model)
 
@@ -116,12 +116,12 @@ summary(gam_model)
 # s(actuarial_age) 3.629  4.358 2008.4  <2e-16 ***
 # s(duration)      6.851  7.473  154.8  <2e-16 ***
 # s(capital)       7.520  7.885  139.6  <2e-16 ***
-# s(IMC)           6.413  6.791  153.6  <2e-16 ***
+# s(BMI)           6.413  6.791  153.6  <2e-16 ***
 
 # And here, if they should be in the model
 gam_model2 <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps"),
+                   s(capital, bs = "ps") + s(BMI, bs = "ps"),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 summary(gam_model2)
 
@@ -139,7 +139,7 @@ summary(gam_model2)
 # s(actuarial_age) 3.640      9 2010.85  <2e-16 ***
 # s(duration)      7.471      9  167.82  <2e-16 ***
 # s(capital)       7.096      9  143.33  <2e-16 ***
-# s(IMC)           4.633      9   93.78  <2e-16 ***
+# s(BMI)           4.633      9   93.78  <2e-16 ***
 
 plot(gam_model2, ylim = c(-5, 5))
 ```
@@ -466,37 +466,37 @@ t %>%
 ```
 
 ```{r}
-# IMC with sex
+# BMI with sex
 t1 <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   mutate(
     mortality_man = sum(mortality == "yes" & sex == "man"),
     mortality_woman = sum(mortality == "yes" & sex == "woman"),
     ) %>%
-  select(IMC, mortality_man, mortality_woman) %>%
+  select(BMI, mortality_man, mortality_woman) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t1 <- t1[-8, ]
 
 t_man <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   filter(sex == "man") %>%
   mutate(exp_man = sum(exp)) %>%
-  select(IMC, exp_man) %>%
+  select(BMI, exp_man) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t_woman <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   filter(sex == "woman") %>%
   mutate(exp_woman = sum(exp)) %>%
-  select(IMC, exp_woman) %>%
+  select(BMI, exp_woman) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t_woman <- t_woman[-8, ]
 
@@ -519,41 +519,41 @@ t <- t %>%
 
 t %>%
   ggplot() +
-  geom_point(aes(IMC, value, color = values, fill = values), alpha = 0.4)
+  geom_point(aes(BMI, value, color = values, fill = values), alpha = 0.4)
 ```
 
 ```{r}
-# IMC with smoker
+# BMI with smoker
 t1 <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   mutate(
     mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
     mortality_nonsmoker = sum(mortality == "yes" & smoker == "no"),
     ) %>%
-  select(IMC, mortality_smoker, mortality_nonsmoker) %>%
+  select(BMI, mortality_smoker, mortality_nonsmoker) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t1 <- t1[-8, ]
 
 t_yes <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   filter(smoker == "yes") %>%
   mutate(exp_yes = sum(exp)) %>%
-  select(IMC, exp_yes) %>%
+  select(BMI, exp_yes) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t_no <- insurance_train %>%
-  mutate(IMC = round(IMC, 1)) %>%
-  group_by(IMC) %>%
+  mutate(BMI = round(BMI, 1)) %>%
+  group_by(BMI) %>%
   filter(smoker == "no") %>%
   mutate(exp_no = sum(exp)) %>%
-  select(IMC, exp_no) %>%
+  select(BMI, exp_no) %>%
   distinct() %>%
-  arrange(IMC)
+  arrange(BMI)
 
 t_no <- t_no[-8, ]
 
@@ -576,7 +576,7 @@ t <- t %>%
 
 t %>%
   ggplot() +
-  geom_point(aes(IMC, value, color = values, fill = values), alpha = 0.4)
+  geom_point(aes(BMI, value, color = values, fill = values), alpha = 0.4)
 ```
 
 ####
@@ -585,10 +585,10 @@ t %>%
 # GAM
 insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 gam_model <- gam(mortality ~ sex + smoker +
@@ -596,7 +596,7 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = sex),
+                   s(BMI, bs = "ps", by = sex),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = F)
 summary(gam_model)
 
@@ -606,7 +606,7 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = sex),
+                   s(BMI, bs = "ps", by = sex),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 # saveRDS(gam_model, "../01_mortality_model/results_mortality/gam_model_mortality.RDS")
 t1 <- Sys.time()
@@ -631,8 +631,8 @@ plot(gam_model, ylim = c(-5,5), rug = T)
 # s(duration):smokeryes 7.8883      9  155.289  < 2e-16 ***
 # s(capital):sexman     6.9771      9  143.080  < 2e-16 ***
 # s(capital):sexwoman   0.7193      8    2.507  0.06158 .  
-# s(IMC):sexman         2.1418      9    9.013  0.00786 ** 
-# s(IMC):sexwoman       4.0711      8  113.249  < 2e-16 ***
+# s(BMI):sexman         2.1418      9    9.013  0.00786 ** 
+# s(BMI):sexwoman       4.0711      8  113.249  < 2e-16 ***
 ```
 
 
@@ -644,8 +644,8 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
                    s(capital, bs = "ps", by = smoker) +
-                   s(IMC, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = smoker),
+                   s(BMI, bs = "ps", by = sex) +
+                   s(BMI, bs = "ps", by = smoker),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = F)
 summary(gam_model)
 
@@ -656,8 +656,8 @@ gam_model <- gam(mortality ~ sex + smoker +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
                    s(capital, bs = "ps", by = smoker) +
-                   s(IMC, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = smoker),
+                   s(BMI, bs = "ps", by = sex) +
+                   s(BMI, bs = "ps", by = smoker),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 gam_model <- readRDS("../01_mortality_model/results_mortality/gam_model_mortality.RDS")
 summary(gam_model)
@@ -667,9 +667,9 @@ summary(gam_model)
 # Best threshold for kappa
 insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 prob <- predict(gam_model, newdata = insurance_train_prep, 
@@ -724,9 +724,9 @@ plot(kappa)
 # Best threshold for Fscore
 insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 prob <- predict(gam_model, newdata = insurance_train_prep, 
@@ -762,9 +762,9 @@ confusion_matrix %>%
 # Best threshold for max(sensitivity + specificity)
 insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 prob <- predict(gam_model, newdata = insurance_train_prep, 
@@ -802,11 +802,11 @@ confusion_matrix %>%
 ```{r}
 gam_model <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(capital, bs = "ps") + s(BMI, bs = "ps") +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = sex),
+                   s(BMI, bs = "ps", by = sex),
                  data = insurance_train_prep, family = "binomial", method = "REML", select = T)
 summary(gam_model)
 # saveRDS(gam_model, "../01_mortality_model/results_mortality/gam_model.RDS")
@@ -824,15 +824,15 @@ summary(gam_model)
 # s(actuarial_age)      3.720374      9 1986.664  < 2e-16 ***
 # s(duration)           0.009843      9    0.009 0.000194 ***
 # s(capital)            0.043252      9    0.041 0.000461 ***
-# s(IMC)                0.003195      9    0.003 0.010083 *  
+# s(BMI)                0.003195      9    0.003 0.010083 *  
 # s(duration):sexman    7.482038      9   85.939  < 2e-16 ***
 # s(duration):sexwoman  4.741846      9   29.893  < 2e-16 ***
 # s(duration):smokerno  0.951182      9   11.469  8.1e-07 ***
 # s(duration):smokeryes 7.884977      9  166.362  < 2e-16 ***
 # s(capital):sexman     6.972616      9  117.955  < 2e-16 ***
 # s(capital):sexwoman   3.306112      8    9.748 0.001672 ** 
-# s(IMC):sexman         2.128135      9    8.654 0.007842 ** 
-# s(IMC):sexwoman       4.072868      8  111.462  < 2e-16 ***
+# s(BMI):sexman         2.128135      9    8.654 0.007842 ** 
+# s(BMI):sexwoman       4.072868      8  111.462  < 2e-16 ***
 plot(gam_model, ylim = c(-5, 5))
 ```
 
@@ -869,7 +869,7 @@ confusion_matrix %>%
 set.seed(23)
 # Recipe
 rec <- 
-  recipe(mortality ~ sex + smoker + actuarial_age + IMC_factor_1 + capital, 
+  recipe(mortality ~ sex + smoker + actuarial_age + BMI_factor_1 + capital, 
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
   step_dummy(all_nominal_predictors()) %>%

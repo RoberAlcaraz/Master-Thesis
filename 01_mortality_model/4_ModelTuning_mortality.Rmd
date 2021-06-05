@@ -56,16 +56,16 @@ insurance_folds <- vfold_cv(insurance_train, v = 5,
                             strata = mortality)
 
 basic_rec <- 
-  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + BMI + capital, 
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_interact(terms = ~ duration:sex_woman + duration:smoker_yes +
-                  IMC:sex_woman + capital:sex_woman)
+                  BMI:sex_woman + capital:sex_woman)
 ```
 
-We are going to compare the following models: gam, xgboost, random forest and neural networks.
+We are going to compare the following models: 
 
 ```{r}
 grid_ctrl <- control_grid(
@@ -80,7 +80,7 @@ f_meas_2 <- function(data, truth, estimate, na_rm = TRUE, ...){
     truth = !! rlang::enquo(truth),
     estimate = !! rlang::enquo(estimate),
     # set beta = 2
-    beta = 8,
+    beta = 2,
     na_rm = TRUE,
     ...
   )
@@ -102,40 +102,111 @@ my_metrics = metric_set(f_meas_2, recall, kap)
 
 # Models
 
+```{r}
+kknn_rec <- 
+  recipe(formula = mortality ~ sex + smoker + duration + actuarial_age + BMI + 
+    capital, data = insurance_train) %>% 
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>% 
+  step_log(capital, BMI, base = 10) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_interact(terms = ~ duration:sex_man + duration:sex_woman + duration:smoker_yes +
+                  duration:smoker_no + BMI:sex_man + BMI:sex_woman + capital:sex_man +
+                  capital:sex_woman) %>%
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors(), -all_nominal()) 
+
+kknn_model <- 
+  nearest_neighbor(neighbors = tune(), dist_power = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("kknn") 
+
+kknn_wf <- 
+  workflow() %>% 
+  add_recipe(kknn_rec) %>% 
+  add_model(kknn_model) 
+```
 
 ```{r}
-xgboost_rec <- 
-  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
-         data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>% 
-  step_log(capital, IMC, base = 10) %>%
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
+glmnet_rec <- 
+  recipe(formula = mortality ~ sex + smoker + duration + actuarial_age + BMI + 
+    capital, data = insurance_train) %>% 
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>% 
+  step_log(capital, BMI, base = 10) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
   step_interact(terms = ~ duration:sex_man + duration:sex_woman + duration:smoker_yes +
-                  duration:smoker_no + IMC:sex_man + IMC:sex_woman + capital:sex_man +
+                  duration:smoker_no + BMI:sex_man + BMI:sex_woman + capital:sex_man +
                   capital:sex_woman) %>%
   step_zv(all_predictors())
 
-xgboost_model <- 
-  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
-    loss_reduction = tune(), sample_size = tune()) %>% 
+glmnet_model <- 
+  logistic_reg(penalty = tune(), mixture = tune()) %>% 
   set_mode("classification") %>% 
-  set_engine("xgboost") 
+  set_engine("glmnet") 
 
-xgboost_wf <- 
+glmnet_wf <- 
   workflow() %>% 
-  add_recipe(xgboost_rec) %>% 
-  add_model(xgboost_model) 
+  add_recipe(glmnet_rec) %>% 
+  add_model(glmnet_model) 
+
+glmnet_grid <- tidyr::crossing(penalty = 10^seq(-6, -1, length.out = 20), 
+                               mixture = c(0.05, 0.2, 0.4, 0.6, 0.8, 1)) 
+```
+
+```{r}
+svm_rec <- 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + BMI + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>%
+  step_log(capital, BMI, base = 10) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_interact(terms = ~ duration:sex + duration:smoker +
+                  BMI:sex + capital:sex) %>% 
+  step_zv(all_predictors()) %>%
+  step_corr(all_predictors())
+
+svm_model <-
+  svm_poly(cost = tune(), degree = tune(), scale_factor = tune()) %>%
+  set_engine('kernlab') %>%
+  set_mode('classification')
+
+svm_wf <- 
+  workflow() %>%
+  add_recipe(svm_rec) %>%
+  add_model(svm_model)
+```
+
+
+```{r}
+# Decision Tree
+dt_rec <- 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + BMI + capital, 
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>%
+  step_log(capital, BMI, base = 10) %>%
+  step_interact(terms = ~ duration:sex + duration:smoker +
+                  BMI:sex + capital:sex)
+
+dt_model <- 
+  decision_tree(cost_complexity = tune(), tree_depth = tune(), min_n = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("rpart")
+
+dt_wf <- 
+  workflow() %>%
+  add_recipe(dt_rec) %>%
+  add_model(dt_model)
 ```
 
 ```{r}
 # Random Forest
 rf_rec <- 
-  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + BMI + capital, 
          data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, IMC, base = 10) %>%
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>%
+  step_log(capital, BMI, base = 10) %>%
   step_interact(terms = ~ duration:sex + duration:smoker +
-                  IMC:sex + capital:sex)
+                  BMI:sex + capital:sex)
 
 rf_model <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
@@ -151,14 +222,14 @@ rf_wf <-
 
 ```{r}
 mlp_rec <- 
-  recipe(mortality ~ sex + smoker + duration + actuarial_age + IMC + capital, 
+  recipe(mortality ~ sex + smoker + duration + actuarial_age + BMI + capital, 
          data = insurance_train) %>%
-  themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, IMC, base = 10) %>%
+  themis::step_upsample(mortality, over_ratio = tune(), seed = 123) %>%
+  step_log(capital, BMI, base = 10) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_interact(terms = ~ duration:sex + duration:smoker +
-                  IMC:sex + capital:sex) %>% 
+                  BMI:sex + capital:sex) %>% 
   step_zv(all_predictors()) %>%
   step_corr(all_predictors())
 
@@ -178,35 +249,100 @@ mlp_wf <-
 
 
 ```{r}
-# XGBOOST
+# KKNN
 set.seed(123)
-max_ent_xgboost <- grid_max_entropy(parameters(xgboost_wf), size = 15)
+kknn_param <- kknn_wf %>% 
+  parameters() %>% 
+  update(
+    neighbors = neighbors(c(1, 7)),
+    over_ratio = over_ratio(c(0.01, 0.5))
+  )
+  
+max_ent_kknn <- grid_max_entropy(kknn_param, size = 10)
+max_ent_kknn$dist_power <- ifelse(max_ent_kknn$dist_power >= 1.5, 2, 1)
 
 t <- Sys.time()
 cl <- makePSOCKcluster(8)
 registerDoParallel(cl)
 
-xgboost_wf_tune <- xgboost_wf %>%
+kknn_wf_tune <- kknn_wf %>%
   tune_grid(
     resamples = insurance_folds,
-    grid = max_ent_xgboost,
+    grid = max_ent_kknn,
     control = grid_ctrl,
     metrics = my_metrics
     )
 
 stopCluster(cl)
-saveRDS(xgboost_wf_tune, "../01_mortality_model/results_mortality/xgboost_wf_tune.RDS")
+saveRDS(kknn_wf_tune, "../01_mortality_model/results_mortality/kknn_wf_tune.RDS")
 t3 <- Sys.time()
 t3 - t
+
+# SVM
+set.seed(123)
+svm_param <- svm_wf %>% 
+  parameters() %>% 
+  update(
+    over_ratio = over_ratio(c(0.01, 0.5))
+  )
+  
+max_ent_svm <- grid_max_entropy(svm_param, size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+svm_wf_tune <- svm_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_svm,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+stopCluster(cl)
+saveRDS(svm_wf_tune, "../01_mortality_model/results_mortality/svm_wf_tune.RDS")
+t3 <- Sys.time()
+t3 - t
+
+# Decision tree
+set.seed(123)
+
+dt_param <- dt_wf %>%
+  parameters() %>%
+  update(
+    over_ratio = over_ratio(c(0.01, 0.5))
+    )
+
+max_ent_dt <- grid_max_entropy(dt_param, size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+dt_wf_tune <- dt_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_dt,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+saveRDS(dt_wf_tune, "../01_mortality_model/results_mortality/dt_wf_tune.RDS")
+stopCluster(cl)
+
+t4 <- Sys.time()
+t4 - t
 
 # Random Forest
 set.seed(123)
 
 rf_param <- rf_wf %>%
   parameters() %>%
-  update(mtry = finalize(mtry(c(1, 10))))
-
-rf_rec %>% prep() %>% juice()
+  update(
+    mtry = finalize(mtry(c(1, 10))),
+    over_ratio = over_ratio(c(0.01, 0.5))
+    )
 
 max_ent_rf <- grid_max_entropy(rf_param, size = 15)
 
@@ -228,6 +364,33 @@ stopCluster(cl)
 t4 <- Sys.time()
 t4 - t
 
+# MLP
+set.seed(123)
+mlp_param <- mlp_wf %>% 
+  parameters() %>% 
+  update(
+    over_ratio = over_ratio(c(0.01, 0.5))
+  )
+
+max_ent_mlp <- grid_max_entropy(mlp_param, size = 15)
+
+t <- Sys.time()
+cl <- makePSOCKcluster(8)
+registerDoParallel(cl)
+
+mlp_wf_tune <- mlp_wf %>%
+  tune_grid(
+    resamples = insurance_folds,
+    grid = max_ent_mlp,
+    control = grid_ctrl,
+    metrics = my_metrics
+    )
+
+stopCluster(cl)
+saveRDS(mlp_wf_tune, "../01_mortality_model/results_mortality/mlp_wf_tune.RDS")
+t5 <- Sys.time()
+t5 - t
+
 # GAM
 n <- nrow(insurance_folds)
 
@@ -240,21 +403,21 @@ for (i in 1:n){
   
   analysis_data <- analysis(insurance_folds$splits[[i]])
   analysis_data <- 
-    recipe(mortality ~ sex + smoker + actuarial_age + duration + capital + IMC,
+    recipe(mortality ~ sex + smoker + actuarial_age + duration + capital + BMI,
            data = analysis_data) %>%
     themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-    step_log(capital, IMC, base = 10) %>% 
+    step_log(capital, BMI, base = 10) %>% 
     prep() %>% juice()
   
   validation_data <- assessment(insurance_folds$splits[[i]])
   
   gam_model <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
-                   s(capital, bs = "ps") + s(IMC, bs = "ps") +
+                   s(capital, bs = "ps") + s(BMI, bs = "ps") +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
-                   s(IMC, bs = "ps", by = sex),
+                   s(BMI, bs = "ps", by = sex),
                  data = analysis_data, family = "binomial", method = "REML", select = T)
   
   prob <- predict(gam_model, newdata = validation_data, type = "response")
@@ -279,27 +442,6 @@ t1 - t
 mean(f2)
 mean(kappa)
 mean(rec)
-
-
-set.seed(123)
-max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 15)
-
-t <- Sys.time()
-cl <- makePSOCKcluster(8)
-registerDoParallel(cl)
-
-mlp_wf_tune <- mlp_wf %>%
-  tune_grid(
-    resamples = insurance_folds,
-    grid = max_ent_mlp,
-    control = grid_ctrl,
-    metrics = my_metrics
-    )
-
-stopCluster(cl)
-saveRDS(mlp_wf_tune, "../01_mortality_model/results_mortality/mlp_wf_tune.RDS")
-t5 <- Sys.time()
-t5 - t
 ```
 
 
