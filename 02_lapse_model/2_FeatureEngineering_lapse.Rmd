@@ -62,17 +62,17 @@ In this step of the project, we will analyze the following things:
 
 ```{r}
 select_rec <- 
-  recipe(lapse ~ period + cover + sex + smoker + good_health +
-                   actuarial_age + duration + capital + IMC,
-         data = lapse_train)
+  recipe(lapse ~ cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + BMI,
+         data = lapse_train) %>%
+  step_log(capital, BMI, base = 10)
 
 vip_model <- rand_forest() %>%
   set_engine("ranger", importance = "permutation") %>%
   set_mode("classification") %>%
   fit(lapse ~ ., data = select_rec %>% prep() %>% juice)
 
-
-vip(vip_model)
+vip(vip_model, aesthetics = list(color = "black", fill = "indianred", alpha = 0.8))
 ```
 
 
@@ -85,15 +85,13 @@ rfe_model <- rand_forest() %>%
 set.seed(1234)
 select_rec <- 
   recipe(lapse ~ cover + sex + smoker + good_health +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = lapse_train) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   step_select_vip(all_predictors(), outcome = "lapse", model = rfe_model, top_p = 6)
 
 new_data <- select_rec %>% prep() %>% juice()
 new_data
-
-weight_func()
 # The recursive feature selection with Random Forest discard the variables smoker and good_health.
 ```
 
@@ -103,16 +101,16 @@ weight_func()
 ```{r}
 lapse_train_prep <- 
   recipe(lapse ~ cover + sex +
-                   actuarial_age + duration + capital + IMC,
+                   actuarial_age + duration + capital + BMI,
          data = lapse_train) %>%
-  step_log(capital, IMC, base = 10) %>%
+  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
 gam_model_lapse <- gam(lapse ~ cover + sex +
                          s(actuarial_age, bs = "ps") +
                          s(duration, bs = "ps") +
                          s(capital, bs = "ps") + 
-                         s(IMC, bs = "ps"),
+                         s(BMI, bs = "ps"),
                        data = lapse_train_prep, 
                        family = "binomial", 
                        method = "REML", select = F)
@@ -132,13 +130,13 @@ summary(gam_model_lapse)
 # s(actuarial_age) 7.000  7.255   339.63  <2e-16 ***
 # s(duration)      8.720  8.923 29401.84  <2e-16 ***
 # s(capital)       4.304  4.917    70.14  <2e-16 ***
-# s(IMC)           3.742  4.296    50.58  <2e-16 ***
+# s(BMI)           3.742  4.296    50.58  <2e-16 ***
 
 gam_model_lapse <- gam(lapse ~ sex +
                          s(actuarial_age, bs = "ps") +
                          s(duration, bs = "ps") +
                          s(capital, bs = "ps") + 
-                         s(IMC, bs = "ps"),
+                         s(BMI, bs = "ps"),
                        data = lapse_train_prep, 
                        family = "binomial", 
                        method = "REML", select = T)
@@ -156,7 +154,7 @@ summary(gam_model_lapse)
 # s(actuarial_age) 7.154      9   345.25  <2e-16 ***
 # s(duration)      7.996      9 29632.71  <2e-16 ***
 # s(capital)       3.459      9    69.72  <2e-16 ***
-# s(IMC)           3.214      9    50.57  <2e-16 ***
+# s(BMI)           3.214      9    50.57  <2e-16 ***
 # ---
 ```
 
@@ -165,7 +163,7 @@ gam_model_lapse <- gam(lapse ~ sex +
                          s(actuarial_age, bs = "ps", by = sex) +
                          s(duration, bs = "ps", by = sex) +
                          s(capital, bs = "ps", by = sex) + 
-                         s(IMC, bs = "ps", by = sex),
+                         s(BMI, bs = "ps", by = sex),
                        data = lapse_train_prep, 
                        family = "binomial", 
                        method = "REML", select = F)
@@ -186,18 +184,19 @@ summary(gam_model_lapse)
 # s(duration):sexwoman      8.482  8.740 11873.452  < 2e-16 ***
 # s(capital):sexman         4.048  4.697    95.035  < 2e-16 ***
 # s(capital):sexwoman       1.014  1.029     0.915 0.345318    
-# s(IMC):sexman             3.398  4.013    42.964  < 2e-16 ***
-# s(IMC):sexwoman           3.143  3.681    21.531 0.000322 ***
+# s(BMI):sexman             3.398  4.013    42.964  < 2e-16 ***
+# s(BMI):sexwoman           3.143  3.681    21.531 0.000322 ***
 
 gam_model_lapse <- gam(lapse ~ sex +
                          s(actuarial_age, bs = "ps", by = sex) +
                          s(duration, bs = "ps", by = sex) +
                          s(capital, bs = "ps", by = sex) + 
-                         s(IMC, bs = "ps", by = sex),
+                         s(BMI, bs = "ps", by = sex),
                        data = lapse_train_prep, 
                        family = "binomial", 
                        method = "REML", select = T)
 summary(gam_model_lapse)
+itsadug::gamtabs(gam_model_lapse)
 plot(gam_model_lapse, ylim = c(-2,2))
 # Parametric coefficients:
 #              Estimate Std. Error z value Pr(>|z|)    
@@ -214,12 +213,63 @@ plot(gam_model_lapse, ylim = c(-2,2))
 # s(duration):sexwoman      7.96828      9 11852.947  < 2e-16 ***
 # s(capital):sexman         3.30700      9    96.969  < 2e-16 ***
 # s(capital):sexwoman       0.02866      7     0.001 0.960642    
-# s(IMC):sexman             3.67104      8    41.994  < 2e-16 ***
-# s(IMC):sexwoman           1.67353      9    11.970 0.000729 ***
+# s(BMI):sexman             3.67104      8    41.994  < 2e-16 ***
+# s(BMI):sexwoman           1.67353      9    11.970 0.000729 ***
 
 # saveRDS(gam_model_lapse, "../02_lapse_model/results_lapse/gam_model_lapse.RDS")
 gam_model_lapse <- readRDS("../02_lapse_model/results_lapse/gam_model_lapse.RDS")
 plot(gam_model_lapse, ylim = c(-1,1))
+```
+
+```{r}
+plot_gam <- getViz(gam_model_lapse)
+```
+
+```{r}
+plot(sm(plot_gam, 1)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 2)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 3)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 4)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 5)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) scales::scientific_format()(10^x)) +
+  theme_bw()
+plot(sm(plot_gam, 6)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) scales::scientific_format()(10^x)) +
+  theme_bw()
+plot(sm(plot_gam, 7)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) round(10^x, 1)) +
+  theme_bw()
+plot(sm(plot_gam, 8)) +
+  l_fitLine(colour = "cornflowerblue", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "cornflowerblue", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) round(10^x, 1)) +
+  theme_bw()
 ```
 
 ```{r}

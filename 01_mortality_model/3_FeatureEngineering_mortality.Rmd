@@ -28,7 +28,7 @@ knitr::opts_chunk$set(warning = FALSE,
 ```{r, echo = F}
 # install.packages("pacman")
 # devtools::install_github("stevenpawley/recipeselectors")
-pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip, ggfortify)
+pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker, doParallel, mgcv, performance, recipeselectors, vip, ggfortify, ggpubr, cowplot, itsadug, mgcViz)
 theme_set(theme_bw())
 
 pacman::p_load(ranger)
@@ -80,6 +80,19 @@ select_rec <-
 new_data <- select_rec %>% prep() %>% juice()
 new_data
 
+prep_data <- 
+  recipe(mortality ~ cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + BMI,
+         data = insurance_train) %>%
+  themis::step_upsample(mortality, over_ratio = 0.01) %>%
+  step_log(capital, BMI, base = 10) %>% prep() %>% juice()
+
+vip_model <- rfe_model %>% 
+  fit(mortality ~ cover + sex + smoker + good_health +
+                   actuarial_age + duration + capital + BMI,
+         data = prep_data)
+
+vip(vip_model, aesthetics = list(color = "black", fill = "indianred", alpha = 0.8))
 # The recursive feature selection with Random Forest discard the variables cover and good_health.
 ```
 
@@ -87,15 +100,17 @@ new_data
 
 ## GAM models
 
-```{r, eval = F}
+```{r}
 insurance_train_prep <- 
-  recipe(mortality ~ sex + smoker +
+  recipe(mortality ~ sex + smoker + exp +
                    actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
   themis::step_upsample(mortality, over_ratio = 0.01, seed = 123) %>%
-  step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
+```
 
+
+```{r, eval = F}
 # Here we test if they are non-linear or not
 gam_model <- gam(mortality ~ sex + smoker +
                    s(actuarial_age, bs = "ps") + s(duration, bs = "ps") +
@@ -151,7 +166,7 @@ plot(gam_model2, ylim = c(-5, 5))
 
 ```{r}
 # actuarial age with sex
-t1 <- insurance_train %>%
+t1 <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   mutate(
     mortality_man = sum(mortality == "yes" & sex == "man"),
@@ -161,7 +176,7 @@ t1 <- insurance_train %>%
   distinct() %>%
   arrange(actuarial_age)
 
-t_man <- insurance_train %>%
+t_man <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   filter(sex == "man") %>%
   mutate(exp_man = sum(exp)) %>%
@@ -169,7 +184,7 @@ t_man <- insurance_train %>%
   distinct() %>%
   arrange(actuarial_age)
 
-t_woman <- insurance_train %>%
+t_woman <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   filter(sex == "woman") %>%
   mutate(exp_woman = sum(exp)) %>%
@@ -197,11 +212,19 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(actuarial_age, value, color = values, fill = values), alpha = 0.4)
+
+group_colors <- c("indianred", "cornflowerblue")
+t %>%
+  ggplot(aes(actuarial_age, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
 # actuarial_age with smoker
-t1 <- insurance_train %>%
+t1 <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   mutate(
     mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
@@ -211,7 +234,7 @@ t1 <- insurance_train %>%
   distinct() %>%
   arrange(actuarial_age)
 
-t_yes <- insurance_train %>%
+t_yes <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   filter(smoker == "yes") %>%
   mutate(exp_yes = sum(exp)) %>%
@@ -219,7 +242,7 @@ t_yes <- insurance_train %>%
   distinct() %>%
   arrange(actuarial_age)
 
-t_no <- insurance_train %>%
+t_no <- insurance_train_prep %>%
   group_by(actuarial_age) %>%
   filter(smoker == "no") %>%
   mutate(exp_no = sum(exp)) %>%
@@ -247,6 +270,13 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(actuarial_age, value, color = values, fill = values), alpha = 0.4)
+
+t %>%
+  ggplot(aes(actuarial_age, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
@@ -300,11 +330,18 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(duration, value, color = values, fill = values), alpha = 0.4)
+
+t %>%
+  ggplot(aes(duration, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
 # duration with smoker
-t1 <- insurance_train %>%
+t1 <- insurance_train_prep %>%
   mutate(duration = round(duration)) %>%
   group_by(duration) %>%
   mutate(
@@ -315,7 +352,7 @@ t1 <- insurance_train %>%
   distinct() %>%
   arrange(duration)
 
-t_yes <- insurance_train %>%
+t_yes <- insurance_train_prep %>%
   mutate(duration = round(duration)) %>%
   group_by(duration) %>%
   filter(smoker == "yes") %>%
@@ -324,7 +361,7 @@ t_yes <- insurance_train %>%
   distinct() %>%
   arrange(duration)
 
-t_no <- insurance_train %>%
+t_no <- insurance_train_prep %>%
   mutate(duration = round(duration)) %>%
   group_by(duration) %>%
   filter(smoker == "no") %>%
@@ -353,6 +390,13 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(duration, value, color = values, fill = values), alpha = 0.4)
+
+t %>%
+  ggplot(aes(duration, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
@@ -410,12 +454,19 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(capital, value, color = values, fill = values), alpha = 0.4)
+
+t %>%
+  ggplot(aes(capital, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
 # capital with smoker
 t1 <- insurance_train %>%
-  mutate(capital = round(capital)) %>%
+  mutate(capital = quantile(capital, probs = seq(0.01, 0.99, 0.01))) %>%
   group_by(capital) %>%
   mutate(
     mortality_smoker = sum(mortality == "yes" & smoker == "yes"),
@@ -468,7 +519,7 @@ t %>%
 ```{r}
 # BMI with sex
 t1 <- insurance_train %>%
-  mutate(BMI = round(BMI, 1)) %>%
+  mutate(BMI = round(BMI)) %>%
   group_by(BMI) %>%
   mutate(
     mortality_man = sum(mortality == "yes" & sex == "man"),
@@ -481,7 +532,7 @@ t1 <- insurance_train %>%
 t1 <- t1[-8, ]
 
 t_man <- insurance_train %>%
-  mutate(BMI = round(BMI, 1)) %>%
+  mutate(BMI = round(BMI)) %>%
   group_by(BMI) %>%
   filter(sex == "man") %>%
   mutate(exp_man = sum(exp)) %>%
@@ -490,7 +541,7 @@ t_man <- insurance_train %>%
   arrange(BMI)
 
 t_woman <- insurance_train %>%
-  mutate(BMI = round(BMI, 1)) %>%
+  mutate(BMI = round(BMI)) %>%
   group_by(BMI) %>%
   filter(sex == "woman") %>%
   mutate(exp_woman = sum(exp)) %>%
@@ -520,6 +571,13 @@ t <- t %>%
 t %>%
   ggplot() +
   geom_point(aes(BMI, value, color = values, fill = values), alpha = 0.4)
+
+t %>%
+  ggplot(aes(BMI, value, color = values, fill = values)) +
+  geom_point() +
+  scale_fill_manual(values = group_colors) +
+  geom_smooth(method = "loess") +
+  scale_y_continuous(labels = percent_format())
 ```
 
 ```{r}
@@ -602,7 +660,7 @@ summary(gam_model)
 
 t <- Sys.time()
 gam_model <- gam(mortality ~ sex + smoker +
-                   s(actuarial_age, bs = "ps") +
+                   s(actuarial_age, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = sex) +
                    s(duration, bs = "ps", by = smoker) +
                    s(capital, bs = "ps", by = sex) +
@@ -612,56 +670,96 @@ gam_model <- gam(mortality ~ sex + smoker +
 t1 <- Sys.time()
 t1 - t
 gam_model <- gam_model_mortality
+itsadug::gamtabs(gam_model)
 summary(gam_model)
 plot(gam_model, ylim = c(-5,5), rug = T)
 # Parametric coefficients:
 #             Estimate Std. Error  z value Pr(>|z|)    
-# (Intercept) -4.91034    0.03809 -128.924   <2e-16 ***
-# sexwoman    -0.94059    0.06417  -14.657   <2e-16 ***
-# smokeryes    0.03401    0.07696    0.442    0.659    
+# (Intercept) -4.94215    0.04004 -123.420   <2e-16 ***
+# sexwoman    -0.91165    0.08209  -11.106   <2e-16 ***
+# smokeryes    0.04446    0.07601    0.585    0.559    
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
 # Approximate significance of smooth terms:
-#                          edf Ref.df   Chi.sq  p-value    
-# s(actuarial_age)      3.7088      9 1996.089  < 2e-16 ***
-# s(duration):sexman    7.1250      9   71.381  < 2e-16 ***
-# s(duration):sexwoman  4.5378      9   15.813 1.17e-05 ***
-# s(duration):smokerno  1.1365      9    9.680 5.33e-07 ***
-# s(duration):smokeryes 7.8883      9  155.289  < 2e-16 ***
-# s(capital):sexman     6.9771      9  143.080  < 2e-16 ***
-# s(capital):sexwoman   0.7193      8    2.507  0.06158 .  
-# s(BMI):sexman         2.1418      9    9.013  0.00786 ** 
-# s(BMI):sexwoman       4.0711      8  113.249  < 2e-16 ***
+#                              edf Ref.df   Chi.sq  p-value    
+# s(actuarial_age):sexman   5.7830      9 1575.682  < 2e-16 ***
+# s(actuarial_age):sexwoman 7.2456      9  461.767  < 2e-16 ***
+# s(duration):sexman        7.4831      9   84.584  < 2e-16 ***
+# s(duration):sexwoman      4.7061      9   27.212 1.83e-07 ***
+# s(duration):smokerno      0.9659      9   10.974 7.11e-07 ***
+# s(duration):smokeryes     7.8842      9  164.985  < 2e-16 ***
+# s(capital):sexman         6.9941      9  145.811  < 2e-16 ***
+# s(capital):sexwoman       0.6583      8    1.872   0.0910 .  
+# s(BMI):sexman             2.1023      9    8.084   0.0125 *  
+# s(BMI):sexwoman           4.0590      8  106.777  < 2e-16 ***
 ```
-
 
 ```{r}
-gam_model <- gam(mortality ~ sex + smoker +
-                   s(actuarial_age, bs = "ps", by = sex) +
-                   s(actuarial_age, bs = "ps", by = smoker) +
-                   s(duration, bs = "ps", by = sex) +
-                   s(duration, bs = "ps", by = smoker) +
-                   s(capital, bs = "ps", by = sex) +
-                   s(capital, bs = "ps", by = smoker) +
-                   s(BMI, bs = "ps", by = sex) +
-                   s(BMI, bs = "ps", by = smoker),
-                 data = insurance_train_prep, family = "binomial", method = "REML", select = F)
-summary(gam_model)
-
-gam_model <- gam(mortality ~ sex + smoker +
-                   s(actuarial_age, bs = "ps", by = sex) +
-                   s(actuarial_age, bs = "ps", by = smoker) +
-                   s(duration, bs = "ps", by = sex) +
-                   s(duration, bs = "ps", by = smoker) +
-                   s(capital, bs = "ps", by = sex) +
-                   s(capital, bs = "ps", by = smoker) +
-                   s(BMI, bs = "ps", by = sex) +
-                   s(BMI, bs = "ps", by = smoker),
-                 data = insurance_train_prep, family = "binomial", method = "REML", select = T)
-gam_model <- readRDS("../01_mortality_model/results_mortality/gam_model_mortality.RDS")
-summary(gam_model)
+plot_gam <- getViz(gam_model)
 ```
+
+```{r}
+plot(sm(plot_gam, 1)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 2)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 3)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 4)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 5)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 6)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  theme_bw()
+plot(sm(plot_gam, 7)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) scales::scientific_format()(10^x)) +
+  theme_bw()
+plot(sm(plot_gam, 8)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) scales::scientific_format()(10^x)) +
+  theme_bw()
+plot(sm(plot_gam, 9)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) round(10^x, 1)) +
+  theme_bw()
+plot(sm(plot_gam, 10)) +
+  l_fitLine(colour = "indianred", size = 1, alpha = 0.8) +
+  l_rug(mapping = aes(x=x), alpha = 0.4) +
+  l_ciLine(mul = 5, colour = "indianred", linetype = 2, size = 1) +
+  scale_x_continuous(labels = function(x) round(10^x, 1)) +
+  theme_bw()
+
+a <- c(3, 4, 5, 6)
+scales::scientific_format()(10^a)
+parse(text=gsub("e", " %*% 10^", a))
+```
+
 
 ```{r}
 # Best threshold for kappa
@@ -683,8 +781,7 @@ roc_c <- prob %>%
 thresholds <- roc_c %>% select(.threshold) %>% pull()
 length(thresholds)
 length(which(thresholds <= 0.08966623))
-thresholds <- quantile(thresholds, 
-                       probs = seq(0.98, 0.999, 0.0001))
+thresholds <- quantile(thresholds, probs = seq(0.98, 0.999, 0.0001))
 
 thresholds <- roc_c %>% select(.threshold) %>% pull()
 thresholds <- thresholds[(255923-300):(255923+100)]
@@ -738,24 +835,39 @@ prob <- as_tibble(prob) %>%
 prec_rec_curve <- prob %>%
   pr_curve(mortality, value, event_level = "second")
 
-beta <- 8
-thres <- prec_rec_curve %>%
+b0 <- 0
+for (beta in 1:10){
+  thres <- prec_rec_curve %>%
   mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
   filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
-# thres <- 0.03944233
-confusion_matrix <- prob %>%
-  mutate(pred_class = as.factor(ifelse(value > thres,
-                                       "yes", "no"))) %>%
-  conf_mat(truth = mortality,
-           estimate = pred_class)
-confusion_matrix
-
-
-confusion_matrix %>%
-  summary(event_level = "second", beta = 8)
+  confusion_matrix <- prob %>%
+    mutate(pred_class = as.factor(ifelse(value > thres,
+                                         "yes", "no"))) %>%
+    conf_mat(truth = mortality,
+             estimate = pred_class)
+  
+  b <- confusion_matrix %>%
+    summary(event_level = "second", beta = beta) %>% 
+    filter(.metric == "f_meas") %>% 
+    select(.estimate) %>% pull()
+  a <- confusion_matrix %>%
+    summary(event_level = "second", beta = beta) %>% 
+    filter(.metric == "accuracy") %>% 
+    select(.estimate) %>% pull()
+  
+  if (a > 0.9){
+    if (b > b0){
+      b0 <- b
+      b_beta <- beta
+    }
+  }
+  
+}
+b0
+b_beta
 ```
 
 ```{r}
