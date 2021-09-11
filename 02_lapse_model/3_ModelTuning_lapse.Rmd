@@ -38,7 +38,7 @@ pacman::p_load(ranger)
 ```{r}
 lapse_data <- readRDS("../00_data/insurance_lapse.RDS")
 lapse_data$lapse <- as.factor(lapse_data$lapse)
-
+lapse_data$capital <- as_double(lapse_data$capital)
 lapse_data <- lapse_data %>%
   filter(actuarial_age >= 21, actuarial_age <= 61)
 
@@ -49,7 +49,7 @@ lapse_train <- training(lapse_split)
 lapse_test  <- testing(lapse_split)
 
 set.seed(23)
-lapse_folds <- vfold_cv(lapse_train, v = 10, strata = lapse)
+lapse_folds <- vfold_cv(lapse_train, v = 5, strata = lapse)
 ```
 
 # Metrics
@@ -60,7 +60,7 @@ grid_ctrl <- control_grid(
   event_level = "second"
   )
 
-my_metrics = metric_set(f_meas, kap, recall)
+my_metrics = metric_set(f_meas, kap, sensitivity, specificity)
 ```
 
 
@@ -72,8 +72,6 @@ kknn_rec <-
     capital, data = lapse_train) %>%
   step_log(capital, BMI, base = 10) %>%
   step_dummy(all_nominal(), -all_outcomes()) %>% 
-  step_interact(terms = ~ duration:sex_woman + actuarial_age:sex_woman + 
-                  BMI:sex_woman + capital:sex_woman) %>%
   step_zv(all_predictors()) %>%
   step_normalize(all_predictors(), -all_nominal()) 
 
@@ -95,8 +93,6 @@ svm_rec <-
   step_log(capital, BMI, base = 10) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:sex_woman + actuarial_age:sex_woman + 
-                  BMI:sex_woman + capital:sex_woman) %>%
   step_zv(all_predictors()) %>%
   step_corr(all_predictors())
 
@@ -118,9 +114,7 @@ dt_rec <-
   recipe(formula = lapse ~ sex + duration + actuarial_age + BMI + 
      capital, data = lapse_train) %>%
   step_log(capital, BMI, base = 10) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:sex_woman + actuarial_age:sex_woman + 
-                  BMI:sex_woman + capital:sex_woman)
+  step_dummy(all_nominal_predictors())
 
 dt_model <- 
   decision_tree(cost_complexity = tune(), tree_depth = tune(), min_n = tune()) %>% 
@@ -139,9 +133,7 @@ rf_rec <-
   recipe(formula = lapse ~ sex + duration + actuarial_age + BMI + 
     capital, data = lapse_train) %>%
   step_log(capital, BMI, base = 10) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:sex_woman + actuarial_age:sex_woman + 
-                  BMI:sex_woman + capital:sex_woman)
+  step_dummy(all_nominal_predictors())
 
 rf_model <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
@@ -162,8 +154,6 @@ mlp_rec <-
   step_log(capital, BMI, base = 10) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_dummy(all_nominal_predictors()) %>%
-  step_interact(terms = ~ duration:sex_woman + actuarial_age:sex_woman + 
-                  BMI:sex_woman + capital:sex_woman) %>%
   step_zv(all_predictors()) %>%
   step_corr(all_predictors())
 
@@ -190,11 +180,11 @@ kknn_param <- kknn_wf %>%
     neighbors = neighbors(c(1, 21))
   )
   
-max_ent_kknn <- grid_max_entropy(kknn_param, size = 10)
+max_ent_kknn <- grid_max_entropy(kknn_param, size = 5)
 max_ent_kknn$dist_power <- ifelse(max_ent_kknn$dist_power >= 1.5, 2, 1)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(7)
 registerDoParallel(cl)
 
 kknn_wf_tune <- kknn_wf %>%
@@ -212,10 +202,10 @@ t1 - t
 
 # SVM
 set.seed(123)
-max_ent_svm <- grid_max_entropy(parameters(svm_wf), size = 10)
+max_ent_svm <- grid_max_entropy(parameters(svm_wf), size = 5)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(7)
 registerDoParallel(cl)
 
 svm_wf_tune <- svm_wf %>%
@@ -233,10 +223,10 @@ t2 - t
 
 # Decision tree
 set.seed(123)
-max_ent_dt <- grid_max_entropy(parameters(dt_wf), size = 10)
+max_ent_dt <- grid_max_entropy(parameters(dt_wf), size = 5)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(7)
 registerDoParallel(cl)
 
 dt_wf_tune <- dt_wf %>%
@@ -262,10 +252,10 @@ rf_param <- rf_wf %>%
     mtry = finalize(mtry(c(1, 10))),
     )
 
-max_ent_rf <- grid_max_entropy(rf_param, size = 10)
+max_ent_rf <- grid_max_entropy(rf_param, size = 5)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(7)
 registerDoParallel(cl)
 
 rf_wf_tune <- rf_wf %>%
@@ -284,10 +274,10 @@ t4 - t
 
 # MLP
 set.seed(123)
-max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 10)
+max_ent_mlp <- grid_max_entropy(parameters(mlp_wf), size = 5)
 
 t <- Sys.time()
-cl <- makePSOCKcluster(8)
+cl <- makePSOCKcluster(7)
 registerDoParallel(cl)
 
 mlp_wf_tune <- mlp_wf %>%
@@ -302,6 +292,73 @@ stopCluster(cl)
 saveRDS(mlp_wf_tune, "../02_lapse_model/results_lapse/mlp_wf_tune.RDS")
 t5 <- Sys.time()
 t5 - t
+```
+
+```{r}
+kknn_wf_tune <- readRDS("results_lapse/kknn_wf_tune.RDS")
+dt_wf_tune <- readRDS("results_lapse/dt_wf_tune.RDS")
+mlp_wf_tune <- readRDS("results_lapse/mlp_wf_tune.RDS") 
+```
+
+```{r}
+wflow_set <- as_workflow_set(
+  kknn = kknn_wf_tune, 
+  #svm = svm_wf_tune,
+  dt = dt_wf_tune,
+  mlp = mlp_wf_tune
+  )
+
+wflow_set %>% collect_metrics() %>% 
+  filter(.metric == "f_meas") %>% 
+  arrange(desc(mean))
+
+wflow_set %>% collect_metrics() %>% 
+  filter(wflow_id == "kknn", .config == "Preprocessor1_Model2")
+```
+
+
+```{r}
+# DT
+dt_param <- dt_wf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "f_meas") %>%
+  arrange(desc(mean)) %>%
+  slice(1) %>%
+  dplyr::select(cost_complexity, tree_depth, min_n)
+
+dt_wf <- dt_wf %>%
+  finalize_workflow(dt_param)
+
+dt_final_wf <- dt_wf %>%
+  fit(lapse_train_prep)
+
+rpart.plot::rpart.plot(dt_final_wf$fit$fit$fit, roundint=FALSE)
+dt_final_wf <- predict(dt_final_wf, lapse_train_prep)
+
+dt_final_wf %>%
+  bind_cols(lapse = lapse_train_prep$lapse) %>% 
+  conf_mat(truth = lapse,
+           estimate = .pred_class) %>%
+  summary(event_level = "second")
+
+
+kknn_param <- kknn_wf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "f_meas") %>%
+  arrange(desc(mean)) %>%
+  slice(1) %>%
+  dplyr::select(neighbors, dist_power)
+
+kknn_wf <- kknn_wf %>%
+  finalize_workflow(kknn_param)
+
+kknn_final_wf <- kknn_wf %>%
+  last_fit(lapse_split)
+
+kknn_final_wf %>%
+  collect_predictions() %>%
+  conf_mat(truth = lapse,
+           estimate = .pred_class) 
 ```
 
 

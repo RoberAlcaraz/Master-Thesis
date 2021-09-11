@@ -32,6 +32,8 @@ pacman::p_load(tidyverse, tidymodels, workflowsets, tune, patchwork, dotwhisker,
 theme_set(theme_bw())
 
 pacman::p_load(ranger)
+
+scale_factor()
 ```
 
 # Code
@@ -60,6 +62,26 @@ In this step of the project, we will analyze the following things:
 # Variable selection
 
 ## Recursive feature selection with Random Forest
+
+
+```{r}
+prima <- read.csv("../00_data/prima.csv", header = T, sep = ";")
+colnames(prima) <- c("actuarial_age", "qx_men", "qy_women")
+prima$qx_men <- as.numeric(gsub(",", ".", prima$qx_men))
+prima$qy_women <- as.numeric(gsub(",", ".", prima$qy_women))
+prima <- prima %>% 
+  filter(actuarial_age > 20, actuarial_age < 62)
+```
+
+```{r}
+insurance <- merge(insurance, prima, by = "actuarial_age") %>% 
+  mutate(qx = if_else(sex == "man", qx_men, qy_women)) %>% 
+  select(-qx_men, -qy_women)
+
+insurance %>% 
+  mutate(prima = qx * capital)
+```
+
 
 
 ```{r}
@@ -696,6 +718,16 @@ plot(gam_model, ylim = c(-5,5), rug = T)
 ```
 
 ```{r}
+pred <- predict(gam_model, insurance_train_prep, type = "response")
+predictions <- tibble(
+  truth = insurance_train_prep$mortality,
+  prob = pred
+)
+autoplot(pr_curve(predictions, truth, prob, event_level = "second"))
+ggsave("roc1.jpg")
+```
+
+```{r}
 plot_gam <- getViz(gam_model)
 ```
 
@@ -760,11 +792,19 @@ scales::scientific_format()(10^a)
 parse(text=gsub("e", " %*% 10^", a))
 ```
 
+```{r}
+insurance_train <- merge(insurance_train, prima, by = "actuarial_age") %>% 
+  mutate(qx = if_else(sex == "man", qx_men, qy_women)) %>% 
+  select(-qx_men, -qy_women) %>% 
+  mutate(prima = qx * capital) %>% 
+  mutate(prima = 1.15*prima)
+```
+
 
 ```{r}
 # Best threshold for kappa
 insurance_train_prep <- 
-  recipe(mortality ~ sex + smoker +
+  recipe(mortality ~ sex + smoker + 
                    actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
   step_log(capital, BMI, base = 10) %>%
@@ -820,9 +860,95 @@ plot(kappa)
 ```{r}
 # Best threshold for Fscore
 insurance_train_prep <- 
+  recipe(mortality ~ sex + smoker + prima +
+                   actuarial_age + duration + capital + BMI,
+         data = insurance_train) %>%
+  step_log(capital, BMI, base = 10) %>%
+  prep() %>% juice()
+
+prob <- predict(gam_model, newdata = insurance_train_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_train_prep$mortality,
+         capital = insurance_train$capital,
+         prima = insurance_train$prima)
+
+prec_rec_curve <- prob %>%
+  pr_curve(mortality, value, event_level = "second")
+
+b0 <- 0
+b_beta <- 1
+for (beta in 1:20){
+  thres <- prec_rec_curve %>%
+  mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
+  select(.threshold) %>%
+  pull()
+
+  results <- prob %>%
+  mutate(pred_class = as.factor(ifelse(value > thres,
+                                       "yes", "no"))) %>% 
+  mutate(
+    capital = as.double(capital),
+    result = case_when(
+      mortality == "no" & pred_class == "no" ~ prima,
+      mortality == "no" & pred_class == "yes" ~ -prima,
+      mortality == "yes" & pred_class == "no" ~ -capital+prima,
+      mortality == "yes" & pred_class == "yes" ~ capital-prima,
+  )) %>% 
+  select(result) %>% sum
+  
+  if (results > b0){
+    b0 <- results
+    b_beta <- beta
+  }
+  
+}
+b0
+b_beta
+
+
+thres <- prec_rec_curve %>%
+  mutate(sum = (1 + b_beta^2)*(recall * precision)/((b_beta^2*precision) + recall)) %>%
+  filter(sum == max(sum, na.rm = T)) %>%
+  select(.threshold) %>%
+  pull()
+
+prob <- prob %>%
+  mutate(pred_class = as.factor(ifelse(value > thres,
+                                     "yes", "no"))) 
+
+prob %>% 
+  conf_mat(mortality, pred_class) %>% 
+  summary(beta = 2, event_level = "second")
+
+# Facturación real
+sum(prob$prima)
+# Siniestralidad real
+sum(prob$capital[which(prob$mortality == "yes")])
+
+# Facturación teórica
+prob %>% 
+  summarise(n_prima = value * capital) %>% 
+  sum
+
+# Siniestralidad teórica
+
+```
+
+```{r}
+# Best threshold for F-score
+insurance_train_prep <- 
   recipe(mortality ~ sex + smoker +
                    actuarial_age + duration + capital + BMI,
          data = insurance_train) %>%
+  step_log(capital, BMI, base = 10) %>%
+  prep() %>% juice()
+insurance_test_prep <- 
+  recipe(mortality ~ sex + smoker +
+                   actuarial_age + duration + capital + BMI,
+         data = insurance_test) %>%
   step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
@@ -835,68 +961,14 @@ prob <- as_tibble(prob) %>%
 prec_rec_curve <- prob %>%
   pr_curve(mortality, value, event_level = "second")
 
-b0 <- 0
-for (beta in 1:10){
-  thres <- prec_rec_curve %>%
-  mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
+b_beta <- 8
+thres <- prec_rec_curve %>%
+  mutate(sum = (1 + b_beta^2)*(recall * precision)/((b_beta^2*precision) + recall)) %>%
   filter(sum == max(sum, na.rm = T)) %>%
   select(.threshold) %>%
   pull()
 
-  confusion_matrix <- prob %>%
-    mutate(pred_class = as.factor(ifelse(value > thres,
-                                         "yes", "no"))) %>%
-    conf_mat(truth = mortality,
-             estimate = pred_class)
-  
-  b <- confusion_matrix %>%
-    summary(event_level = "second", beta = beta) %>% 
-    filter(.metric == "f_meas") %>% 
-    select(.estimate) %>% pull()
-  a <- confusion_matrix %>%
-    summary(event_level = "second", beta = beta) %>% 
-    filter(.metric == "accuracy") %>% 
-    select(.estimate) %>% pull()
-  
-  if (a > 0.9){
-    if (b > b0){
-      b0 <- b
-      b_beta <- beta
-    }
-  }
-  
-}
-b0
-b_beta
-```
-
-```{r}
-# Best threshold for max(sensitivity + specificity)
-insurance_train_prep <- 
-  recipe(mortality ~ sex + smoker +
-                   actuarial_age + duration + capital + BMI,
-         data = insurance_train) %>%
-  step_log(capital, BMI, base = 10) %>%
-  prep() %>% juice()
-
-prob <- predict(gam_model, newdata = insurance_train_prep, 
-                type = "response")
-
-prob <- as_tibble(prob) %>%
-  mutate(mortality = insurance_train_prep$mortality)
-
-roc_c <- prob %>%
-  roc_curve(mortality, value, event_level = "second")
-autoplot(roc_c)
-
-
-thres <- roc_c %>%
-  mutate(sum = sensitivity + specificity) %>%
-  filter(sum == max(sum, na.rm = T)) %>%
-  select(.threshold) %>%
-  pull()
-
-# thres <- 0.01173517
+# thres <- 0.04014321
 confusion_matrix <- prob %>%
   mutate(pred_class = as.factor(ifelse(value > thres,
                                        "yes", "no"))) %>%
@@ -904,6 +976,19 @@ confusion_matrix <- prob %>%
            estimate = pred_class)
 confusion_matrix
 
+# TEST SET
+prob <- predict(gam_model, newdata = insurance_test_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(mortality = insurance_test_prep$mortality)
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.04014321,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = mortality,
+           estimate = pred_class) %>%
+  summary(event_level = "second", beta = 8)
 
 confusion_matrix %>%
   summary(event_level = "second")

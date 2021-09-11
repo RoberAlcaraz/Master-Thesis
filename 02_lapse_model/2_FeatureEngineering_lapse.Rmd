@@ -106,6 +106,13 @@ lapse_train_prep <-
   step_log(capital, BMI, base = 10) %>%
   prep() %>% juice()
 
+lapse_test_prep <- 
+  recipe(lapse ~ cover + sex +
+                   actuarial_age + duration + capital + BMI,
+         data = lapse_test) %>%
+  step_log(capital, BMI, base = 10) %>%
+  prep() %>% juice()
+
 gam_model_lapse <- gam(lapse ~ cover + sex +
                          s(actuarial_age, bs = "ps") +
                          s(duration, bs = "ps") +
@@ -157,6 +164,19 @@ summary(gam_model_lapse)
 # s(BMI)           3.214      9    50.57  <2e-16 ***
 # ---
 ```
+
+```{r}
+pred <- predict(gam_model_lapse, lapse_train_prep, type = "response")
+predictions <- tibble(
+  truth = lapse_train_prep$lapse,
+  prob = pred
+)
+autoplot(roc_curve(predictions, truth, prob, event_level = "second"))
+ggsave("roc2.jpg")
+```
+
+
+
 
 ```{r}
 gam_model_lapse <- gam(lapse ~ sex +
@@ -327,12 +347,19 @@ prob <- predict(gam_model_lapse, newdata = lapse_train_prep,
 prob <- as_tibble(prob) %>%
   mutate(lapse = lapse_train$lapse)
 
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.239206,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = lapse,
+           estimate = pred_class) %>% 
+  summary(event_level = "second")
+
 prec_rec_curve <- prob %>%
   pr_curve(lapse, value, event_level = "second")
 
 autoplot(prec_rec_curve)
 
-beta <- 2
+beta <- 1
 thres <- prec_rec_curve %>%
   mutate(sum = (1 + beta^2)*(recall * precision)/((beta^2*precision) + recall)) %>%
   filter(sum == max(sum, na.rm = T)) %>%
@@ -346,6 +373,20 @@ confusion_matrix <- prob %>%
                                        "yes", "no"))) %>%
   conf_mat(truth = lapse,
            estimate = pred_class)
+
+# TEST SET
+prob <- predict(gam_model_lapse, newdata = lapse_test_prep, 
+                type = "response")
+
+prob <- as_tibble(prob) %>%
+  mutate(lapse = lapse_test_prep$lapse)
+
+prob %>%
+  mutate(pred_class = as.factor(ifelse(value > 0.239206,
+                                       "yes", "no"))) %>%
+  conf_mat(truth = lapse,
+           estimate = pred_class) %>% 
+  summary(event_level = "second")
 
 confusion_matrix
 confusion_matrix %>%
